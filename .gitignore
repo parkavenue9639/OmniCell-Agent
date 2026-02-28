@@ -1,0 +1,56 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE and Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Data pipeline output and cache
+data/
+outputs/
+test_results/
+**/*.h5ad
+**/*.csv
+**/*.json
+
+# macOS
+.DS_Store
+
+# Pytest and coverage
+.pytest_cache/
+.coverage
+htmlcov/
