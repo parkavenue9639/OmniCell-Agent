@@ -35,12 +35,23 @@ def run_executor(state: DataPipeline_State) -> dict:
     
     try:
         # 下放至 Sandbox 执行
+        # 执行前：使用深拷贝生成沙盒内的上下文环境备份，以防止代码执行崩溃导致 adata 被半脏数据污染
+        backup_code = "if 'adata' in locals() or 'adata' in globals(): adata_backup = adata.copy()"
+        sandbox.execute_code(backup_code)
+        
+        # 下放至 Sandbox 执行
         logger.info(f"Submitting {len(code)} characters to Docker Sandbox...")
         result = sandbox.execute_code(code)
         
-        # 强制清理：每轮执行后释放内存大对象，避免累积引发如 zero-size array 异常或显存崩溃。
-        clean_up_code = "import gc; locals().pop('adata', None); globals().pop('adata', None); gc.collect();"
-        sandbox.execute_code(clean_up_code)
+        if result.get("status") == "error":
+            # 报错自毁恢复机制：如果报错，把之前的 adata_backup 再 copy 回去，抹除掉所有错误修改
+            logger.warning("Sandbox 运行时触发报错，启动安全备份还原 adata...')")
+            restore_code = "if 'adata_backup' in locals() or 'adata_backup' in globals(): adata = adata_backup.copy(); del adata_backup; import gc; gc.collect()"
+            sandbox.execute_code(restore_code)
+        else:
+            # 正常执行：丢弃备份件，释放巨大的单细胞内存
+            cleanup_backup_code = "if 'adata_backup' in locals() or 'adata_backup' in globals(): del adata_backup; import gc; gc.collect()"
+            sandbox.execute_code(cleanup_backup_code)
         
         trace_logger.append_sandbox_execution(code=code, result=result)
         

@@ -21,17 +21,23 @@ def route_evaluation(state: DataPipeline_State):
     status = eval_record.get("status")
     
     if status == "success":
-        logger.info("Graph A 路由: 评估通过，结束管线。")
-        trace_logger.append_pipeline_end("SUCCESS", max_retries_hit=False)
-        return END
-        
+        current_index = state.get("current_step_index", 0)
+        plan_steps = state.get("plan_steps", [])
+        if current_index >= len(plan_steps):
+            logger.info("Graph A 路由: 所有拆分后的生信步骤执行完毕，成功抵达终点。")
+            trace_logger.append_pipeline_end("SUCCESS", max_retries_hit=False)
+            return END
+        else:
+            logger.info(f"Graph A 路由: 步进完成，继续下潜组装 第 {current_index+1}/{len(plan_steps)} 步 ...")
+            return "programmer"
+            
     retries = task_context.get("retry_count", 0)
     if retries >= MAX_RETRIES:
-        logger.error(f"Graph A 路由: 达到最大重试次数 ({MAX_RETRIES})，强行结束管线。")
+        logger.error(f"Graph A 路由: 某个单行节点已达到最大重修上限 ({MAX_RETRIES})，图谱强行熔断退出。")
         trace_logger.append_pipeline_end("ABORTED_MAX_RETRIES", max_retries_hit=True)
         return END
         
-    logger.info(f"Graph A 路由: 代码执行失败，打回 Programmer 重写。当前重试次数: {retries + 1}/{MAX_RETRIES}")
+    logger.info(f"Graph A 路由: 代码沙盒或视觉执行失败，打回靶心 Programmer 单独重写。当前重修次数: {retries + 1}/{MAX_RETRIES}")
     # 放行回 Programmer
     return "programmer"
 

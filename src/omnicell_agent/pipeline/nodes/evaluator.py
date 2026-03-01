@@ -43,19 +43,28 @@ def run_evaluator(state: DataPipeline_State) -> dict:
     trace_logger.append_node_start("EVALUATOR")
     
     sandbox_result = state.get("sandbox_execution_result", {})
-    
+    task_context = state.get("task_context", {})
+
     # 1. 代码执行层拦截 (沙盒层错误)
     if sandbox_result.get("status") == "error":
         err_msg = sandbox_result.get('error') or sandbox_result.get('stderr', 'Unknown Error')
         feedback_msg = f"Sandbox Execution Failed! Traceback info:\n\n{err_msg}\nPlease fix your Python代码。"
         logger.warning(f"检测到 Sandbox 异常日志，拦截任务重返 Programmer: \n{err_msg}")
-        return {
-            "task_context": {"eval_record": {"status": "error", "feedback": feedback_msg}}
-        }
+        
+        retries = task_context.get("retry_count", 0)
+        task_context["retry_count"] = retries + 1
+        
+        failed_attempts = task_context.get("failed_attempts", [])
+        failed_attempts.append({
+            "code": state.get("last_generated_code", ""),
+            "feedback": feedback_msg
+        })
+        task_context["failed_attempts"] = failed_attempts
+        task_context["eval_record"] = {"status": "error", "feedback": feedback_msg}
+        
+        return {"task_context": task_context}
     
     eval_record = {"status": "success", "feedback": "Execution runs cleanly without issues."}
-
-    task_context = state.get("task_context", {})
 
     # 2. 聚类视觉评估维度的拦截 (Vision)
     # 若开启了多模态，则读取 UMAP 图像发送给大模型进行图文评估
@@ -113,10 +122,18 @@ def run_evaluator(state: DataPipeline_State) -> dict:
                 if eval_status != "success":
                     logger.warning(f"视觉评估未通过: \n{feedback}")
                     eval_record["status"] = "error"
-                    eval_record["feedback"] = f"Vision Evaluator Feedback:\n{feedback}\nPlease fix your Python code to redraw the image to meet all constraints."
+                    eval_feedback_msg = f"Vision Evaluator Feedback:\n{feedback}\nPlease fix your Python code to redraw the image to meet all constraints."
+                    eval_record["feedback"] = eval_feedback_msg
                     
                     retries = task_context.get("retry_count", 0)
                     task_context["retry_count"] = retries + 1
+                    
+                    failed_attempts = task_context.get("failed_attempts", [])
+                    failed_attempts.append({
+                        "code": state.get("last_generated_code", ""),
+                        "feedback": eval_feedback_msg
+                    })
+                    task_context["failed_attempts"] = failed_attempts
                 else:
                     logger.info(f"视觉评估完美通过: \n{feedback}")
                         
@@ -126,4 +143,13 @@ def run_evaluator(state: DataPipeline_State) -> dict:
             logger.info("本次执行不涉及图片生成或未找到产出图，跳过视觉审阅。")
 
     task_context["eval_record"] = eval_record
-    return {"task_context": task_context}
+    
+    # 根据单步是否成功来操纵步进指针
+    if eval_record["status"] == "success":
+        eval_record["feedback"] = ""  # 清空可能的历史毒药反馈
+        task_context["retry_count"] = 0
+        task_context["failed_attempts"] = [] # 清理历史尝试档案，一身轻地步入下一步
+        current_index = state.get("current_step_index", 0) + 1
+        return {"task_context": task_context, "current_step_index": current_index}
+    else:
+        return {"task_context": task_context}

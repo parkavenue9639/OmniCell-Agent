@@ -25,8 +25,10 @@ def test_subgraph_a_execution():
     init_state = {
         "raw_data_path": "/app/data/pbmc3k_raw.h5ad",
         "marker_table_path": "/app/data/markers.csv",
-        "messages": [HumanMessage(content="利用本地数据生成一个快速的 PCA 绘图并展示散点，请包含保存为 current_pca.png 的步骤。")],
+        "messages": [HumanMessage(content="执行一个复杂的全组学生信分析大穿透：请首先对原始数据进行严格质量控制与过滤；然后执行归一化；接着寻高变基因并使用 PCA 降维；对降维结果直接进行聚类；聚类出结果后利用常见的 Marker 库自动标记粗粒度的细胞群分类；顺便计算所有聚类簇的核心 Marker 基因并导出为表格文件；最后请给我画一张好看的 PCA 散点图并标上聚类颜色，存为 current_pca.png。")],
         "task_context": {},
+        "plan_steps": [],
+        "current_step_index": 0,
         "last_generated_code": "",
         "sandbox_execution_result": {}
     }

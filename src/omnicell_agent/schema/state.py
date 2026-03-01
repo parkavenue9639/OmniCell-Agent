@@ -1,6 +1,16 @@
 import operator
-from typing import Annotated, TypedDict, List, Dict, Any
+from typing import Annotated, TypedDict, List, Dict, Any, Optional
 from langchain_core.messages import BaseMessage
+from pydantic import BaseModel, Field
+
+class PlanStep(BaseModel):
+    step_type: str = Field(..., description="指令类型：如果是已知官方库自带技能则填 'skill_call'；如果是需要让 Programmer 自己手搓的非标能力甚至未知需求则填 'custom_code'。")
+    skill_name: Optional[str] = Field(None, description="如果 step_type 是 'skill_call'，必须填入命中技能的具体英文标识（从元数据列表中选择）。否则留空。")
+    instruction: str = Field(..., description="给 Programmer / 或人类看的本步骤自然语言短口令。例如：'执行 PCA 并将结果绘制保存。'")
+    background_context: Optional[str] = Field(None, description="如果是 custom_code，请尽可能提供一些由于没有技能脚本而导致的上下文缺失信息（如：建议他调用 scanpy 的什么函数、需要关注什么格式等防爆补充）。")
+
+class AnalysisPlan(BaseModel):
+    steps: List[PlanStep] = Field(..., description="解析重组后的拆分执行指令列表，按细胞步进式执行流顺序排列。")
 
 
 # ==============================================================================
@@ -22,6 +32,10 @@ class DataPipeline_State(TypedDict):
     # 动态控制与沙盘流转级上下文
     # 为了避免后续如果扩展算法导致需要增加诸如 "n_pca", "resolution" 等导致形参爆炸, 统一塞入此槽位
     task_context: Dict[str, Any]       
+    
+    # Skill-Driven Pipeline 的循环步游标引擎
+    plan_steps: List[Dict[str, Any]]   # 从 Planner 拿到并转化后的 Pydantic Dict 队列
+    current_step_index: int            # 当前进行到了第几步
     
     # 代码与沙盒执行隔离记录回执
     last_generated_code: str
