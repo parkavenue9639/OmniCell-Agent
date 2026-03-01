@@ -1,0 +1,16 @@
+FROM python:3.10-slim
+
+# 设置清华源加速依赖安装
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 安装沙盒执行必要的科学计算库与 Jupyter Core
+RUN pip install --no-cache-dir \
+    scanpy \
+    pandas \
+    numpy \
+    matplotlib \
+    ipykernel \
+    leidenalg \
+    igraph
+
+WORKDIR /app

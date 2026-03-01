@@ -46,6 +46,9 @@ test_results/
 **/*.h5ad
 **/*.csv
 **/*.json
+**/*.png
+logs/
+.runtime_kernels/
 
 # macOS
 .DS_Store

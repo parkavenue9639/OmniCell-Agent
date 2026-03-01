@@ -14,9 +14,10 @@ class DockerJupyterSandbox:
     解决痛点：将数 GB 的 adata 实例固化于容器内存，避免频繁 I/O 与冷启动开销。
     """
 
-    def __init__(self, image_name: str = "omnicell-worker:latest", timeout_secs: int = 120):
+    def __init__(self, image_name: str = "omnicell-worker:latest", timeout_secs: int = 120, reuse_existing: bool = True):
         self.image_name = image_name
         self.timeout_secs = timeout_secs
+        self.reuse_existing = reuse_existing
         
         # 尝试连接本地宿主机的 docker daemon
         try:
@@ -34,8 +35,12 @@ class DockerJupyterSandbox:
                 logger.error("Failed to connect to Docker daemon via env and no orbstack sock found.")
                 raise RuntimeError("Docker daemon connection failed")
 
-        # 指定一个独特的 session ID，用于标记当前流水线的容器实例
-        self.session_id = str(uuid.uuid4())[:8]
+        # 指定一个独特的 session ID，如果开启复用则固定使用 shared 标识
+        if self.reuse_existing:
+            self.session_id = "shared"
+        else:
+            self.session_id = str(uuid.uuid4())[:8]
+            
         self.container_name = f"omnicell_sandbox_{self.session_id}"
         
         self.container = None
@@ -60,44 +65,57 @@ class DockerJupyterSandbox:
     def start(self):
         """
         拉起 Docker 容器，并确保它在内部启动了一个暴露在 0.0.0.0 的 ipykernel。
+        支持复用正在跑的预热好图内存的实例。
         """
-        logger.info(f"Starting Jupyter Sandbox Container: {self.container_name} with image {self.image_name}")
-        
-        volumes = {
-            self.host_data_dir: {'bind': self.container_data_dir, 'mode': 'rw'},
-            self.host_runtime_dir: {'bind': self.container_runtime_dir, 'mode': 'rw'}
-        }
-        
-        # 指定容器必须将 connection_file 输出到挂载目录
         connection_file_name = f"kernel-{self.session_id}.json"
-        
-        # 内部启动指令：运行 ipykernel 并且让其把连接配置写到挂载磁盘
-        cmd = [
-            "python", "-m", "ipykernel_launcher", 
-            "-f", f"{self.container_runtime_dir}/{connection_file_name}"
-        ]
+        connection_file_path = os.path.join(self.host_runtime_dir, connection_file_name)
 
+        # 检查是否已有复用的容器在运行
+        if self.reuse_existing:
+            try:
+                self.container = self.docker_client.containers.get(self.container_name)
+                if self.container.status == "running":
+                    logger.info(f"Connected to existing Sandbox Container: {self.container_name}")
+                else:
+                    logger.info(f"Sandbox Container {self.container_name} is {self.container.status}, removing it.")
+                    self.container.remove(force=True)
+                    self.container = None
+            except docker.errors.NotFound:
+                pass
+
+        if self.container is None:
+            logger.info(f"Starting Jupyter Sandbox Container: {self.container_name} with image {self.image_name}")
+            
+            volumes = {
+                self.host_data_dir: {'bind': self.container_data_dir, 'mode': 'rw'},
+                self.host_runtime_dir: {'bind': self.container_runtime_dir, 'mode': 'rw'}
+            }
+            
+            # 内部启动指令：运行 ipykernel 并且让其把连接配置写到挂载磁盘
+            cmd = [
+                "python", "-m", "ipykernel_launcher", 
+                "-f", f"{self.container_runtime_dir}/{connection_file_name}"
+            ]
+
+            try:
+                self.container = self.docker_client.containers.run(
+                    image=self.image_name,
+                    name=self.container_name,
+                    command=cmd,
+                    volumes=volumes,
+                    detach=True,
+                    network_mode="host", 
+                )
+                # 等待 Jupyter Kernel 启动并把 Connection File 刷入磁盘
+                self._wait_for_connection_file(connection_file_name)
+            except Exception as e:
+                logger.error(f"Failed to start sandbox container: {e}")
+                if not self.reuse_existing:
+                    self.cleanup()
+                raise e
+            
         try:
-            self.container = self.docker_client.containers.run(
-                image=self.image_name,
-                name=self.container_name,
-                command=cmd,
-                volumes=volumes,
-                detach=True,
-                network_mode="host", 
-                # 这里暂时采用 net=host 使得 jupyter_client 可以直接读取 localhost 相应的 ZeroMQ 端口
-                # 对于 Mac 上的 Docker Desktop，network_mode="host" 可能表现不一致。
-                # 后面可以改用 bridge 并暴露 ports={'50000-50100/tcp': ...}
-            )
-            
-            # 等待 Jupyter Kernel 启动并把 Connection File 刷入磁盘
-            self._wait_for_connection_file(connection_file_name)
-            
             # 建立宿主机的连接端
-            connection_file_path = os.path.join(self.host_runtime_dir, connection_file_name)
-            
-            # Mac Host 上读取容器生成的 connection file，如果容器内写的是 127.0.0.1 但我们没用 net host，
-            # 需要替换 JSON 里的 ip 为 localhost 或容器内 IP。
             logger.info(f"Loading connection file: {connection_file_path}")
             
             self.kernel_client = BlockingKernelClient(connection_file=connection_file_path)
@@ -108,8 +126,7 @@ class DockerJupyterSandbox:
             logger.info("Sandbox initialized and connected successfully.")
             
         except Exception as e:
-            logger.error(f"Failed to start sandbox container: {e}")
-            self.cleanup()
+            logger.error(f"Failed to initialize Sandbox connection: {e}")
             raise e
 
     def _wait_for_connection_file(self, filename: str):
@@ -181,8 +198,17 @@ class DockerJupyterSandbox:
 
     def cleanup(self):
         """
-        关闭 kernel 的所有频道，并杀掉 Docker 容器
+        关闭 kernel 的所有频道，并杀掉 Docker 容器（除非设置为复用模式）。
         """
+        if self.reuse_existing:
+            logger.info(f"Sandbox {self.container_name} kept alive because reuse_existing=True.")
+            if self.kernel_client:
+                try:
+                    self.kernel_client.stop_channels()
+                except Exception:
+                    pass
+            return
+            
         logger.info(f"Cleaning up Sandbox {self.container_name}...")
         
         if self.kernel_client:

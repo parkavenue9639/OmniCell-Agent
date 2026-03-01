@@ -1,0 +1,16 @@
+请仔细审阅附带的这幅单细胞分析过程截屏图像。
+
+以下是背景信息：
+【用户的原始指令】
+{user_messages_text}
+
+【当前 Planner 下达的工作规划】
+{plan}
+
+---
+请基于上述信息进行视觉评审。
+你的输出必须采用以下 JSON 格式（不要附带任何无关内容或 markdown 代码块语法块）：
+{{
+    "status": "success" 或 "error",
+    "feedback": "如果是 success 请输出 'Image is qualified' 或其他简短赞美。如果是 error，必须详细写明你观察到的图表缺陷，以及指导 Programmer 修改 Python 代码（比如修改 scanpy 的 figsize 参数，更换颜色映射，过滤参数等）来重绘图像的具体建议。"
+}}

@@ -11,3 +11,5 @@
     如果是纯聚类或寻找 Marker，直接假定 `adata` 存在即可。
     
     切记：务必执行系统所要求的 pct.1 和 pct.2 补全逻辑，保证 Data Contract 对齐！！
+
+    {code_template}
