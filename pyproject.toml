@@ -22,6 +22,8 @@ dependencies = [
     "docker>=7.0.0",
     "leidenalg>=0.11.0",
     "igraph>=1.0.0",
+    "jupyter-client>=8.8.0",
+    "ipykernel>=7.2.0",
 ]
 
 [project.optional-dependencies]
