@@ -1,0 +1,13 @@
+    请根据以下计划编写 Python (Scanpy/AnnData) 脚本代码：
+    【规划内容】:
+    {plan}
+    
+    【环境变量绑定】:
+    raw_data_path = "{raw_data_path}"
+    marker_table_path = "{marker_table_path}"
+    
+    假设 `adata` 这个变量可能已经在上下文中被加载了。如果规划中有涉及到读取文件，请先检查 `adata` 存不存在，
+    如：`if 'adata' not in locals() and 'adata' not in globals(): adata = sc.read_h5ad(raw_data_path)`
+    如果是纯聚类或寻找 Marker，直接假定 `adata` 存在即可。
+    
+    切记：务必执行系统所要求的 pct.1 和 pct.2 补全逻辑，保证 Data Contract 对齐！！

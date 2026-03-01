@@ -29,7 +29,7 @@ def run_programmer(state: DataPipeline_State) -> dict:
         # programmer 节点需要最强的代码生成能力 (使用用户的 OneRouter 通道)
         llm = LLMSelector.get_llm(model_name="onerouter:default", temperature=0.0)
         
-        system_content = prompt_manager.load_prompt("programmer_system.txt", marker_table_path=marker_table_path)
+        system_content = prompt_manager.load_prompt("programmer_system.txt", raw_data_path=raw_data_path, marker_table_path=marker_table_path)
         human_content = prompt_manager.load_prompt(
             "programmer_human.txt", 
             plan=plan, 
