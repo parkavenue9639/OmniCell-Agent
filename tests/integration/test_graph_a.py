@@ -23,9 +23,9 @@ def test_subgraph_a_execution():
     # 构建包含错误诱导或者能够真实全自动运行的指令
     # 我们先测试单步绘图，确保能通过全链路而不中断。
     init_state = {
-        "raw_data_path": "/app/data/pbmc3k_raw.h5ad",
+        "raw_data_path": "/app/data/spatial_sample.h5ad",
         "marker_table_path": "/app/data/markers.csv",
-        "messages": [HumanMessage(content="执行一个复杂的全组学生信分析大穿透：请首先对原始数据进行严格质量控制与过滤；然后执行归一化；接着寻高变基因并使用 PCA 降维；对降维结果直接进行聚类；聚类出结果后利用常见的 Marker 库自动标记粗粒度的细胞群分类；顺便计算所有聚类簇的核心 Marker 基因并导出为表格文件；最后请给我画一张好看的 PCA 散点图并标上聚类颜色，存为 current_pca.png。")],
+        "messages": [HumanMessage(content="执行一个空间组学生信分析的大穿透测试：请基于内置技能库对当前数据执行空间点阵表达插值平滑 (spatial imputation)，然后基于空间坐标位置数据进行空间结构域鉴定聚类 (spatial domain identification)。")],
         "task_context": {},
         "plan_steps": [],
         "current_step_index": 0,

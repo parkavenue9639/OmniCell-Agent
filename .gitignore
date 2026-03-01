@@ -57,3 +57,4 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+data/V1_Breast_Cancer_Block_A_Section_1/
