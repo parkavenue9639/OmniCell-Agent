@@ -46,6 +46,8 @@ class DataPipeline_State(TypedDict):
 # ==============================================================================
 # Sub-Graph B: Deep Annotation State
 # ==============================================================================
+
+# 以下为单一 Cluster 被 Send API 派发出去后的微观状态
 class Annotation_State(TypedDict):
     """
     Sub-Graph B 当中处理**单一簇(cluster)**的细粒度流转状态。
@@ -71,3 +73,28 @@ class Annotation_State(TypedDict):
     
     # 循环防护：由于存在如果低分可能打回重新发问 Boost 补图，这个标志可以规避死循环
     retry_count: int
+
+
+# 以下为子图 B 作为整体被外部调用时的宏观状态
+def update_annotation_dict(existing: Dict[str, Any], new_updates: Dict[str, Any]) -> Dict[str, Any]:
+    """自定义的状态归并策略：用于将各并发簇的打标结果安全合并到总字典"""
+    merged = existing.copy() if existing else {}
+    merged.update(new_updates)
+    return merged
+
+class SubGraphB_State(TypedDict):
+    """
+    Sub-Graph B 的主状态树。
+    接收总档并负责生发单细胞簇鉴定任务。
+    """
+    # 顶层入口配置
+    contract_file_path: str
+    species: str
+    tissue: str
+    
+    # 这里用于归集所有底层 Annotation_State 散播出去后最终收敛返回的细胞身份，
+    # 键为 cluster_id，值为具体的 annotation string 等组合。
+    cluster_annotations: Annotated[Dict[str, Any], update_annotation_dict]
+    
+    # 总成阶段报告生成
+    final_report: str
