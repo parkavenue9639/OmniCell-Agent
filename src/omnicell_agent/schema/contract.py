@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, AliasChoices
 from typing import List, Dict, Any, Optional
 
 class MarkerGene(BaseModel):
@@ -11,13 +11,15 @@ class MarkerGene(BaseModel):
     """
     model_config = ConfigDict(extra="allow")
 
-    gene_name: str
-    cluster_id: str
-    p_val: float          # 原始 P 值
-    p_val_adj: float      # BH校正后的 P 值
-    log2FC: float         # Fold change
-    pct_1: float = Field(..., description="本细胞簇表达比例")
-    pct_2: float = Field(..., description="其他细胞簇表达比例")
+    gene_name: str = Field(..., validation_alias=AliasChoices("gene_name", "names", "gene"))
+    cluster_id: str = Field(..., validation_alias=AliasChoices("cluster_id", "cluster"))
+    p_val: float = Field(..., validation_alias=AliasChoices("p_val", "pvals", "pval"), description="原始 P 值")
+    p_val_adj: float = Field(..., validation_alias=AliasChoices("p_val_adj", "pvals_adj", "pval_adj"), description="BH校正后的 P 值")
+    log2FC: float = Field(..., validation_alias=AliasChoices("log2FC", "logfoldchanges", "avg_log2FC"), description="Fold change")
+    
+    # 支持在验证时同时接受 "pct_1" 或是带有句点的 "pct.1" (Scanpy/Seurat 格式)
+    pct_1: float = Field(..., validation_alias=AliasChoices("pct.1", "pct_1"), description="本细胞簇表达比例")
+    pct_2: float = Field(..., validation_alias=AliasChoices("pct.2", "pct_2"), description="其他细胞簇表达比例")
     
     # 预留槽位：日后可激活的可选补充列
     score: Optional[float] = None
@@ -47,4 +49,9 @@ class MarkerTableContract(BaseModel):
         """从文件中拉升并强校验恢复契约对象"""
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+            
+        # 兼容沙盘大模型有几率只丢过来一个 JSON Array 的情况
+        if isinstance(data, list):
+            data = {"metadata": {}, "markers": data}
+            
         return cls(**data)

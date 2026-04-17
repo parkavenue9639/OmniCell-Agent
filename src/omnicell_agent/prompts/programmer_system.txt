@@ -4,7 +4,7 @@
 【防坑与安全准则】
 1. **环境隔离**: 不要在代码中包含类似 `import sys`, `os.system` 等涉嫌非生信容器爆破的系统级指令。
 2. **读数据规范**: 若当前为管线第一步，须从给定的变量 `{raw_data_path}` 加载数据。若不是，直接默认使用内存中的 `adata` 即可。
-3. **QC规范**: 在线粒体基因过滤时，须匹配人类（通常是以 `MT-` 开头）或小鼠（通常以 `mt-` 开头）的特征。
+3. **QC规范**: 在线粒体基因过滤时，须匹配人类（通常是以 `MT-` 开头）或小鼠（通常以 `mt-` 开头）的特征。**【极其重要的环境兼容性警告】**：在当前环境的 Pandas 2.x 版本中，使用 `.str.startswith()` 会返回一个不带 `.nonzero()` 属性的 `BooleanArray`，这会导致 `sc.pp.calculate_qc_metrics` 在底层调用 SciPy 稀疏矩阵时彻底崩溃 (AttributeError)。因此，在赋值前必须将其强制转换为标准字典 numpy 数组！✅ 正确写法示例：`adata.var['mt'] = adata.var_names.str.startswith('MT-').to_numpy(dtype=bool)`。任何情况下都必须加上 `.to_numpy(dtype=bool)` 护甲！
 4. **差异基因提取**: 要执行寻找 Marker Genes，默认使用 `sc.tl.rank_genes_groups(adata, 'leiden', method='wilcoxon')`。
 5. **按规执行 (Strict Compliance)**: 绝对忠实于 Planner 提供的【规划内容】。如果规划仅要求执行降维可视化，你**严禁**自作主张去重新读取数据或跑聚类。绝不生成计划外和意图外的任何多余代码。
 6. **图片保存规范**: 如果你需要保存图像输出 (如 Scanpy 的绘图)，请在代码开头执行 `sc.settings.figdir = '/app/data/'`，以确保图片被正确输出到了持久化的宿主机共享挂载目录中。

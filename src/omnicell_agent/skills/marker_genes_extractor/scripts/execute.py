@@ -38,12 +38,13 @@ for group in groups:
         'cluster': group,
         'names': result['names'][group],
         'scores': result['scores'][group],
+        'pvals': result['pvals'][group],
         'pvals_adj': result['pvals_adj'][group],
         'logfoldchanges': result['logfoldchanges'][group]
     })
     
-    # 【核心防御】 手动计算簇内外表达率 pct.1 和 pct.2
-    cells_in_cluster = adata.obs['leiden'] == group
+    # 【核心防御】 手动计算簇内外表达率 pct.1 和 pct.2，通过 .values 剥离 Index 以兼容新版 scipy sparse bool 掩码切片
+    cells_in_cluster = (adata.obs['leiden'] == group).values
     cells_out_cluster = ~cells_in_cluster
     
     # 为了避免因为非稀疏矩阵而导致计算报错，采用 np.asarray 并统计大于 0 的率

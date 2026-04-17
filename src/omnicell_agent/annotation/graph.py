@@ -54,7 +54,7 @@ def distribute_clusters(state: SubGraphB_State) -> List[Send]:
             quality_scores={},
             retry_count=0
         )
-        sends.append(Send("annotator", child_state))
+        sends.append(Send("process_cluster", child_state))
         
     logger.info(f"图 B 主干网已建立，成功并发派发 {len(sends)} 个寻址靶向任务！")
     return sends
@@ -67,50 +67,50 @@ def validate_boost_condition(state: Annotation_State) -> str:
     # 门栏设定：低于 75 分即代表存在大模型幻觉模糊争议
     if cs_score < 75.0 and retry_count < 1:
         return "boost"
-    return "pack_result"
+    return "end"
 
-def pack_result_node(state: Annotation_State) -> Dict[str, Any]:
-    """
-    微观并发流终点站：负责将单独 Cluster 的最终判断收集缩列，交送给上一层的 Reducer (update_annotation_dict)
-    """
-    cid = state.get("cluster_id")
-    preds = state.get("predictions", {})
-    preds["cs_score"] = state.get("quality_scores", {}).get("cs_score", 0.0)
-    return {"cluster_annotations": {cid: preds}}
-
-def build_annotation_graph():
-    """组装并全态暴露 Sub-Graph B，面向大工程接线"""
-    # LangGraph 对于 Send 映射的设计：母状态管理宏观，子节点接收微观载体
-    builder = StateGraph(SubGraphB_State)
-    
-    # 注册所有的异步并发节
+def build_single_cluster_graph():
+    """微观图：用于处理单细胞簇从打标、审核、打分到救回的闭环"""
+    builder = StateGraph(Annotation_State)
     builder.add_node("annotator", annotator_node)
     builder.add_node("validator", validator_node)
     builder.add_node("scorer", scorer_node)
     builder.add_node("boost", boost_node)
     
-    # 【Map/并发】起射发令台
-    builder.add_conditional_edges(START, distribute_clusters, ["annotator"])
-    
-    # 【串行】大模型审理链 (每个支流内各自跑)
+    builder.add_edge(START, "annotator")
     builder.add_edge("annotator", "validator")
     builder.add_edge("validator", "scorer")
-    
-    # 【条件增强】
     builder.add_conditional_edges("scorer", validate_boost_condition, {
         "boost": "boost",
-        "pack_result": "pack_result"
+        "end": END
     })
+    builder.add_edge("boost", END)
     
-    # Boost 挽救失败或成功后直接装箱
-    builder.add_edge("boost", "pack_result")
+    return builder.compile()
+
+single_cluster_app = build_single_cluster_graph()
+
+def process_cluster_wrapper(state: Annotation_State) -> Dict[str, Any]:
+    """包装器：调用微观图，并只抽出母状态关心的结果字典"""
+    final_child = single_cluster_app.invoke(state)
+    cid = final_child.get("cluster_id")
+    preds = final_child.get("predictions", {})
+    preds["cs_score"] = final_child.get("quality_scores", {}).get("cs_score", 0.0)
+    return {"cluster_annotations": {cid: preds}}
+
+def build_annotation_graph():
+    """组装并全态暴露 Sub-Graph B，面向大工程接线"""
+    builder = StateGraph(SubGraphB_State)
     
-    # 注册装箱搬运工和总管 Reporter 节点
-    builder.add_node("pack_result", pack_result_node)
+    # 将原来的 annotator 提级为整个单簇处理过程的 process_cluster_wrapper 微缩图
+    builder.add_node("process_cluster", process_cluster_wrapper)
     builder.add_node("reporter", reporter_node)
     
+    # 【Map/并发】起射发令台
+    builder.add_conditional_edges(START, distribute_clusters, ["process_cluster"])
+    
     # 【Reduce/归集】汇总图
-    builder.add_edge("pack_result", "reporter")
+    builder.add_edge("process_cluster", "reporter")
     builder.add_edge("reporter", END)
 
     return builder.compile()

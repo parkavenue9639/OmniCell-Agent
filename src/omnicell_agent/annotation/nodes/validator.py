@@ -4,7 +4,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from pydantic import BaseModel, Field
 
 from omnicell_agent.schema.state import Annotation_State
-from omnicell_agent.core.llm_client import OmniCellLLM
+from omnicell_agent.core.llm_client import LLMSelector
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +46,8 @@ def validator_node(state: Annotation_State) -> Dict[str, Any]:
         HumanMessage(content=user_prompt)
     ]
     
-    llm_client = OmniCellLLM(temperature=0.0) # 0度无情算分
-    structured_llm = llm_client.model.with_structured_output(ValidatorOutput)
+    model = LLMSelector.get_llm("onerouter:default", temperature=0.0) # 0度无情算分
+    structured_llm = model.with_structured_output(ValidatorOutput)
     
     try:
         logger.info(f"[Cluster {cluster_id}] 正在进行同行大模型交叉纠错审计...")

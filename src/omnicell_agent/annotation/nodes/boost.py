@@ -4,7 +4,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
 from omnicell_agent.schema.state import Annotation_State
 from omnicell_agent.schema.contract import MarkerTableContract
-from omnicell_agent.core.llm_client import OmniCellLLM
+from omnicell_agent.core.llm_client import LLMSelector
 from omnicell_agent.annotation.nodes.annotator import AnnotationOutput
 
 logger = logging.getLogger(__name__)
@@ -55,8 +55,8 @@ def boost_node(state: Annotation_State) -> Dict[str, Any]:
         ]
         
         # 使用较高的温度增加突变思考能力
-        llm_client = OmniCellLLM(temperature=0.3)
-        structured_llm = llm_client.model.with_structured_output(AnnotationOutput)
+        model = LLMSelector.get_llm("onerouter:default", temperature=0.3)
+        structured_llm = model.with_structured_output(AnnotationOutput)
         
         logger.info(f"[Cluster {cluster_id}] Boost 节点正在进行深潜抢救请求 ({len(deep_markers_info)} 个增强靶点)...")
         result: AnnotationOutput = structured_llm.invoke(messages)

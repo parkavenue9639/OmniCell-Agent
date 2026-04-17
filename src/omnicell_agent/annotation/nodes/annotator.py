@@ -4,7 +4,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from pydantic import BaseModel, Field
 
 from omnicell_agent.schema.state import Annotation_State
-from omnicell_agent.core.llm_client import OmniCellLLM
+from omnicell_agent.core.llm_client import LLMSelector
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +51,9 @@ def annotator_node(state: Annotation_State) -> Dict[str, Any]:
         HumanMessage(content=user_prompt)
     ]
     
-    # 2. 调用模型 (启用结构化输出)
-    llm_client = OmniCellLLM(temperature=0.1) # 极低温度以保障学术推理稳定性
-    structured_llm = llm_client.model.with_structured_output(AnnotationOutput)
+    # 配置核心基座模型与 Structured Output 挂载
+    model = LLMSelector.get_llm("onerouter:default", temperature=0.1) # 极低温度以保障学术推理稳定性
+    structured_llm = model.with_structured_output(AnnotationOutput)
     
     try:
         logger.info(f"[Cluster {cluster_id}] 正在拉起 LLM 分析 {len(top_markers)} 个 Marker...")

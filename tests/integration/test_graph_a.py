@@ -25,7 +25,7 @@ def test_subgraph_a_execution():
     init_state = {
         "raw_data_path": "/app/data/spatial_sample.h5ad",
         "marker_table_path": "/app/data/markers.csv",
-        "messages": [HumanMessage(content="执行一个空间组学生信分析的大穿透测试：请基于内置技能库对当前数据执行空间点阵表达插值平滑 (spatial imputation)，然后基于空间坐标位置数据进行空间结构域鉴定聚类 (spatial domain identification)。")],
+        "messages": [HumanMessage(content="执行一个空间组学生信分析的大穿透测试：请对当前数据执行空间点阵表达插值平滑 (spatial imputation)，然后基于空间坐标位置数据进行空间结构域鉴定聚类 (spatial domain identification)。")],
         "task_context": {},
         "plan_steps": [],
         "current_step_index": 0,
