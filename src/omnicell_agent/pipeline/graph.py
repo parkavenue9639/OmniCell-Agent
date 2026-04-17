@@ -1,5 +1,6 @@
 from langgraph.graph import StateGraph, END
 from omnicell_agent.schema.state import DataPipeline_State
+from omnicell_agent.pipeline.nodes.context_resolver import run_context_resolver
 from omnicell_agent.pipeline.nodes.planner import run_planner
 from omnicell_agent.pipeline.nodes.programmer import run_programmer
 from omnicell_agent.pipeline.nodes.executor import run_executor
@@ -48,13 +49,17 @@ def build_pipeline_graph():
     workflow = StateGraph(DataPipeline_State)
 
     # 1. 注册节点
+    workflow.add_node("context_resolver", run_context_resolver)
     workflow.add_node("planner", run_planner)
     workflow.add_node("programmer", run_programmer)
     workflow.add_node("executor", run_executor)
     workflow.add_node("evaluator", run_evaluator)
 
     # 2. 定义边 (Edges)
-    workflow.set_entry_point("planner")
+    # 首节点改为 context_resolver：从用户 prompt + h5ad 元数据推断语境，
+    # 再将结果通过 task_context 传递给 Planner 及后续 Graph B，消除对 CLI --species/--tissue 的依赖。
+    workflow.set_entry_point("context_resolver")
+    workflow.add_edge("context_resolver", "planner")
     workflow.add_edge("planner", "programmer")
     workflow.add_edge("programmer", "executor")
     workflow.add_edge("executor", "evaluator")

@@ -68,8 +68,8 @@ class Annotation_State(TypedDict):
     reasoning_messages: Annotated[List[BaseMessage], operator.add]
     
     # 阶段性评判产出标定 (支持多种维度计分与类型分支的自由扩展)
-    predictions: Dict[str, str]       # e.g., {"general_type": "T cell", "sub_type": "CD4+ T cell"}
-    quality_scores: Dict[str, float]  # e.g., {"overall": 85.0, "hallmark_consistency": 90.0}
+    predictions: Dict[str, Any]       # e.g. general_type/sub_type/reasoning_chain/marker_evidence 等
+    quality_scores: Dict[str, Any]  # validator_penalty / cs_score / self_consistency_ok 等
     
     # 循环防护：由于存在如果低分可能打回重新发问 Boost 补图，这个标志可以规避死循环
     retry_count: int

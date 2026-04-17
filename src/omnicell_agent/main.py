@@ -63,11 +63,11 @@ class OmniCell_Agent_State(TypedDict):
 def bridge_state_node(state: OmniCell_Agent_State) -> Dict[str, Any]:
     """
     Sub-Graph A -> Sub-Graph B 的状态物理转换中继节点。
-    解决沙盒内部路径 /app/data 到 宿主机绝对路径 的转换。
+    1) 将沙盒路径 /app/data 映射回宿主机绝对路径。
+    2) 将 Graph A 中 context_resolver 推断得到的 species/tissue 提升到母图顶层，
+       供 Sub-Graph B 使用；若顶层已有显式 override 则保持原值不被覆盖。
     """
     sandbox_path = state.get("marker_table_path", "")
-    
-    # 将沙盒虚拟路径 /app/data 映射回真实的物理存放处
     host_data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data"))
     filename = os.path.basename(sandbox_path)
     host_path = os.path.join(host_data_dir, filename)
@@ -76,8 +76,32 @@ def bridge_state_node(state: OmniCell_Agent_State) -> Dict[str, Any]:
     
     if not os.path.exists(host_path):
         logger.error(f"严重错误：沙盒疑似执行失败或无数据溢出。桥接节点无法寻址 {host_path}！")
-    
-    return {"contract_file_path": host_path}
+
+    updates: Dict[str, Any] = {"contract_file_path": host_path}
+
+    resolved = (state.get("task_context", {}) or {}).get("resolved_context") or {}
+    current_species = (state.get("species") or "").strip()
+    current_tissue = (state.get("tissue") or "").strip()
+
+    if resolved:
+        inferred_species = (resolved.get("species") or "").strip()
+        inferred_tissue = (resolved.get("tissue") or "").strip()
+
+        if not current_species and inferred_species:
+            updates["species"] = inferred_species
+        if not current_tissue and inferred_tissue:
+            updates["tissue"] = inferred_tissue
+
+        logger.info(
+            "--- BRIDGE: 组织语境注入 [species=%s | tissue=%s | goal=%s] ---",
+            updates.get("species", current_species or "Unknown"),
+            updates.get("tissue", current_tissue or "Unknown"),
+            resolved.get("goal_type", "general_annotation"),
+        )
+    else:
+        logger.warning("--- BRIDGE: 未在 task_context 中发现 resolved_context，Graph B 将使用已有/默认 species/tissue ---")
+
+    return updates
 
 
 from omnicell_agent.pipeline.nodes.summarizer import final_summarizer_node
@@ -105,14 +129,62 @@ def build_master_graph():
     return builder.compile()
 
 
+DEFAULT_SANDBOX_DATA_PATH = "/app/data/pbmc3k_raw.h5ad"
+DEFAULT_SANDBOX_MARKERS_NAME = "markers.json"
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """
+    CLI 只暴露两项用户级参数：
+      --data        待分析的 .h5ad 数据路径（支持沙盒路径 /app/data/... 或宿主路径）
+      --instruction 自然语言任务指令（传给图 A 的统管口令）
+
+    其余原先作为 CLI 暴露的 species/tissue/out-markers 已内化为系统推断或约定默认值，
+    保留为不在帮助主视图中的高级覆写项（--override-*），仅供调试与专家回归使用。
+    """
+    parser = argparse.ArgumentParser(
+        description=(
+            "OmniCell-Agent 端到端主入口。理想入参仅有：--data + --instruction。"
+            "物种、组织等语境由 Graph A 的 ContextResolver 从 prompt 与 h5ad 元数据自动推断。"
+        )
+    )
+    parser.add_argument(
+        "--data",
+        type=str,
+        default=DEFAULT_SANDBOX_DATA_PATH,
+        help="待分析 .h5ad 数据路径（默认: %(default)s）",
+    )
+    parser.add_argument(
+        "--instruction",
+        type=str,
+        required=True,
+        help="给 Agent 的自然语言任务指令",
+    )
+
+    advanced = parser.add_argument_group("高级覆写（一般不使用）")
+    advanced.add_argument(
+        "--override-species",
+        type=str,
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    advanced.add_argument(
+        "--override-tissue",
+        type=str,
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    advanced.add_argument(
+        "--override-out-markers",
+        type=str,
+        default=DEFAULT_SANDBOX_MARKERS_NAME,
+        help=argparse.SUPPRESS,
+    )
+    return parser
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="OmniCell-Agent 端到端 Native Subgraph 主入口")
-    parser.add_argument("--data", type=str, default="/app/data/spatial_sample.h5ad", help="沙盒挂载原生组学/空间测序数据路径")
-    parser.add_argument("--out-markers", type=str, default="markers.json", help="沙盒内产出的数据特征契约文件名")
-    parser.add_argument("--instruction", type=str, required=True, help="传达给图 A 大模型的统管口令")
-    parser.add_argument("--species", type=str, default="Human", help="鉴定参照物种")
-    parser.add_argument("--tissue", type=str, default="Breast Cancer", help="组织器官大类")
-    
+    parser = _build_arg_parser()
     args = parser.parse_args()
     
     logger.info("="*80)
@@ -120,12 +192,15 @@ if __name__ == "__main__":
     logger.info("="*80)
     
     master_app = build_master_graph()
-    sandbox_marker_out = f"/app/data/{args.out_markers}"
-    instruction_with_contract = f"{args.instruction}\n\n[SYSTEM INSTRUCTION: Please strictly ensure that the final step exports the marker genes as a standardized JSON array to the path: {sandbox_marker_out}]"
+    sandbox_marker_out = f"/app/data/{args.override_out_markers}"
+    instruction_with_contract = (
+        f"{args.instruction}\n\n"
+        f"[SYSTEM INSTRUCTION: Please strictly ensure that the final step exports the "
+        f"marker genes as a standardized JSON array to the path: {sandbox_marker_out}]"
+    )
     
-    # 构筑全局顶层初始化状态
+    # 构筑全局顶层初始化状态：species/tissue 默认为空，由 ContextResolver 推断后经 Bridge 注入。
     initial_state = OmniCell_Agent_State(
-        # 图 A 所需
         raw_data_path=args.data,
         marker_table_path=sandbox_marker_out,
         messages=[HumanMessage(content=instruction_with_contract)],
@@ -134,11 +209,10 @@ if __name__ == "__main__":
         current_step_index=0,
         last_generated_code="",
         sandbox_execution_result={},
-        
-        # 图 B 提前装配项 (路径由 Bridge 补充)
+
         contract_file_path="",
-        species=args.species,
-        tissue=args.tissue,
+        species=args.override_species,
+        tissue=args.override_tissue,
         cluster_annotations={},
         final_report=""
     )
