@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 from typing import Any, Dict, List
 
 from omnicell_agent.schema.state import SubGraphB_State
@@ -86,6 +88,20 @@ def reporter_node(state: SubGraphB_State) -> Dict[str, Any]:
         report_lines.append("_No clusters flagged for mandatory review._")
 
     final_markdown = "\n".join(report_lines)
+
+    dump_path = os.environ.get("OMNICELL_ANNOTATION_DUMP", "").strip()
+    if dump_path:
+        payload = {
+            "species": species,
+            "tissue": tissue,
+            "cluster_annotations": cluster_annotations,
+        }
+        _parent = os.path.dirname(os.path.abspath(dump_path))
+        if _parent:
+            os.makedirs(_parent, exist_ok=True)
+        with open(dump_path, "w", encoding="utf-8") as fp:
+            json.dump(payload, fp, ensure_ascii=False, indent=2)
+        logger.info("annotation_result.json 已写入: %s", dump_path)
 
     logger.info("系统最终汇整验证报告已生成。")
     print("\n" + "=" * 80)

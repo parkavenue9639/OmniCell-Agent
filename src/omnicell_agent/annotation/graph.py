@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, List
 
 from langgraph.graph import StateGraph, START, END
-from langgraph.constants import Send
+from langgraph.types import Send
 
 from omnicell_agent.schema.state import SubGraphB_State, Annotation_State
 from omnicell_agent.schema.contract import MarkerTableContract
@@ -13,6 +13,7 @@ from omnicell_agent.annotation.nodes.scorer import scorer_node
 from omnicell_agent.annotation.nodes.boost import boost_node
 from omnicell_agent.annotation.nodes.reporter import reporter_node
 from omnicell_agent.annotation.nodes.consistency_reviewer import consistency_reviewer_node
+from omnicell_agent.core.config import ENABLE_CONSISTENCY_REVIEWER, ENABLE_BOOST
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,9 @@ def distribute_clusters(state: SubGraphB_State) -> List[Send]:
 
 
 def post_scorer_route(state: Annotation_State) -> str:
-    """Boost 仅允许一次：低分且尚未 Boost 时进入 boost；否则结束微观图。"""
+    """Boost 仅允许一次：低分且尚未 Boost 时进入 boost；否则结束微观图。
+    当 ENABLE_BOOST=False 时，跳过 Boost 直接结束。
+    """
     raw_cs = state.get("quality_scores", {}).get("cs_score", 0.0)
     try:
         cs_score = float(raw_cs)
@@ -73,6 +76,8 @@ def post_scorer_route(state: Annotation_State) -> str:
     retry_count = int(state.get("retry_count", 0) or 0)
 
     if cs_score >= 75.0:
+        return "end"
+    if not ENABLE_BOOST:
         return "end"
     if retry_count < 1:
         return "boost"
@@ -143,7 +148,7 @@ def process_cluster_wrapper(state: Annotation_State) -> Dict[str, Any]:
 
 
 def build_annotation_graph():
-    """组装 Sub-Graph B：Map -> process_cluster -> consistency -> reporter"""
+    """组装 Sub-Graph B：Map -> process_cluster -> [consistency] -> reporter"""
     builder = StateGraph(SubGraphB_State)
 
     builder.add_node("process_cluster", process_cluster_wrapper)
@@ -152,7 +157,14 @@ def build_annotation_graph():
 
     builder.add_conditional_edges(START, distribute_clusters, ["process_cluster"])
 
-    builder.add_edge("process_cluster", "consistency_reviewer")
+    builder.add_conditional_edges(
+        "process_cluster",
+        lambda _s: "consistency_reviewer" if ENABLE_CONSISTENCY_REVIEWER else "reporter",
+        {
+            "consistency_reviewer": "consistency_reviewer",
+            "reporter": "reporter",
+        },
+    )
     builder.add_edge("consistency_reviewer", "reporter")
     builder.add_edge("reporter", END)
 

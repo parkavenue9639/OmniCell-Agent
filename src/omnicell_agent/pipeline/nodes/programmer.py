@@ -3,11 +3,27 @@ import re
 import os
 from langchain_core.messages import SystemMessage, HumanMessage
 from omnicell_agent.core.llm_client import LLMSelector
+from omnicell_agent.core.config import project_root
 from omnicell_agent.schema.state import DataPipeline_State
 from omnicell_agent.core.prompt_manager import prompt_manager
 from omnicell_agent.core.trace_logger import trace_logger
 
 logger = logging.getLogger(__name__)
+
+_HOST_DATA_DIR = str(project_root / "data")
+
+
+def _to_sandbox_path(path: str) -> str:
+    """将宿主机路径统一转换为容器内 /app/data/ 路径。"""
+    if not path or path.startswith("/app/data"):
+        return path
+    abs_path = os.path.abspath(path)
+    if abs_path.startswith(_HOST_DATA_DIR):
+        rel = os.path.relpath(abs_path, _HOST_DATA_DIR)
+        return f"/app/data/{rel}"
+    if path.startswith("data/"):
+        return "/app/data/" + path[5:]
+    return path
 
 def extract_python_code(text: str) -> str:
     """提取 markdown 中的 python block"""
@@ -35,8 +51,12 @@ def run_programmer(state: DataPipeline_State) -> dict:
     step_type = current_step.get("step_type", "custom_code")
     feedback = state.get("task_context", {}).get("eval_record", {}).get("feedback", "")
     
-    raw_data_path = state.get("raw_data_path", "/app/data/sample.h5ad")
-    marker_table_path = state.get("marker_table_path", "/app/data/markers.json")
+    raw_data_path = _to_sandbox_path(
+        state.get("raw_data_path", "/app/data/sample.h5ad")
+    )
+    marker_table_path = _to_sandbox_path(
+        state.get("marker_table_path", "/app/data/markers.json")
+    )
     
     refined_code = ""
 
