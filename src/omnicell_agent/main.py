@@ -3,7 +3,7 @@ import sys
 import logging
 import argparse
 import datetime
-from typing import TypedDict, Annotated, List, Dict, Any
+from typing import TypedDict, Annotated, List, Dict, Any, NotRequired
 import operator
 
 from langchain_core.messages import BaseMessage, HumanMessage
@@ -45,6 +45,8 @@ class OmniCell_Agent_State(TypedDict):
     # --- Sub-Graph A (Pipeline) ---
     raw_data_path: str
     marker_table_path: str
+    # 为 True 时跳过 Graph A，直接从 bridge 进入 Graph B（需已有 markers.json）
+    skip_graph_a: NotRequired[bool]
     messages: Annotated[List[BaseMessage], operator.add]
     task_context: Dict[str, Any]
     plan_steps: List[Dict[str, Any]]
@@ -69,8 +71,14 @@ def bridge_state_node(state: OmniCell_Agent_State) -> Dict[str, Any]:
     """
     sandbox_path = state.get("marker_table_path", "")
     host_data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data"))
-    filename = os.path.basename(sandbox_path)
-    host_path = os.path.join(host_data_dir, filename)
+    if sandbox_path and os.path.isfile(sandbox_path) and not sandbox_path.startswith("/app/"):
+        host_path = os.path.abspath(sandbox_path)
+    elif sandbox_path.startswith("/app/data/"):
+        rel = sandbox_path[len("/app/data/"):]
+        host_path = os.path.join(host_data_dir, rel)
+    else:
+        filename = os.path.basename(sandbox_path)
+        host_path = os.path.join(host_data_dir, filename)
     
     logger.info(f"--- BRIDGE: 载入特征契约源 [沙盒 {sandbox_path} -> 物理 {host_path}] ---")
     
@@ -106,26 +114,37 @@ def bridge_state_node(state: OmniCell_Agent_State) -> Dict[str, Any]:
 
 from omnicell_agent.pipeline.nodes.summarizer import final_summarizer_node
 
+def _route_master_start(state: OmniCell_Agent_State) -> str:
+    if state.get("skip_graph_a"):
+        return "bridge_transition"
+    return "pipeline_subgraph_a"
+
+
 def build_master_graph():
     """将双子图利用 LangGraph 的 Native Subgraph 机制拼接汇总"""
     builder = StateGraph(OmniCell_Agent_State)
-    
-    # 抽取子图 CompiledGraph 作为节点
+
     app_a = build_pipeline_graph()
     app_b = build_annotation_graph()
-    
+
     builder.add_node("pipeline_subgraph_a", app_a)
     builder.add_node("bridge_transition", bridge_state_node)
     builder.add_node("annotation_subgraph_b", app_b)
     builder.add_node("final_summarizer", final_summarizer_node)
-    
-    # 构建物理联通干线
-    builder.add_edge(START, "pipeline_subgraph_a")
+
+    builder.add_conditional_edges(
+        START,
+        _route_master_start,
+        {
+            "pipeline_subgraph_a": "pipeline_subgraph_a",
+            "bridge_transition": "bridge_transition",
+        },
+    )
     builder.add_edge("pipeline_subgraph_a", "bridge_transition")
     builder.add_edge("bridge_transition", "annotation_subgraph_b")
     builder.add_edge("annotation_subgraph_b", "final_summarizer")
     builder.add_edge("final_summarizer", END)
-    
+
     return builder.compile()
 
 
@@ -180,42 +199,73 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_SANDBOX_MARKERS_NAME,
         help=argparse.SUPPRESS,
     )
+    advanced.add_argument(
+        "--skip-graph-a",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    advanced.add_argument(
+        "--markers-json",
+        type=str,
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    advanced.add_argument(
+        "--annotation-dump",
+        type=str,
+        default="",
+        help=argparse.SUPPRESS,
+    )
     return parser
 
 
 if __name__ == "__main__":
     parser = _build_arg_parser()
     args = parser.parse_args()
-    
-    logger.info("="*80)
+
+    logger.info("=" * 80)
     logger.info("   🚀 OmniCell-Agent Native Subgraph E2E Execution Started   ")
-    logger.info("="*80)
-    
+    logger.info("=" * 80)
+
+    if args.annotation_dump:
+        os.environ["OMNICELL_ANNOTATION_DUMP"] = os.path.abspath(args.annotation_dump)
+
     master_app = build_master_graph()
     sandbox_marker_out = f"/app/data/{args.override_out_markers}"
-    instruction_with_contract = (
-        f"{args.instruction}\n\n"
-        f"[SYSTEM INSTRUCTION: Please strictly ensure that the final step exports the "
-        f"marker genes as a standardized JSON array to the path: {sandbox_marker_out}]"
-    )
-    
+
+    if args.skip_graph_a:
+        if not args.markers_json or not os.path.isfile(args.markers_json):
+            raise SystemExit("--skip-graph-a 需要有效的 --markers-json 宿主机路径")
+        host_markers = os.path.abspath(args.markers_json)
+        marker_table_path = host_markers
+        instruction_with_contract = args.instruction
+        logger.info("跳过 Graph A，直接使用 markers: %s", host_markers)
+    else:
+        marker_table_path = sandbox_marker_out
+        instruction_with_contract = (
+            f"{args.instruction}\n\n"
+            f"[SYSTEM INSTRUCTION: Please strictly ensure that the final step exports the "
+            f"marker genes as a standardized JSON array to the path: {sandbox_marker_out}]"
+        )
+
     # 构筑全局顶层初始化状态：species/tissue 默认为空，由 ContextResolver 推断后经 Bridge 注入。
     initial_state = OmniCell_Agent_State(
         raw_data_path=args.data,
-        marker_table_path=sandbox_marker_out,
+        marker_table_path=marker_table_path,
         messages=[HumanMessage(content=instruction_with_contract)],
         task_context={},
         plan_steps=[],
         current_step_index=0,
         last_generated_code="",
         sandbox_execution_result={},
-
         contract_file_path="",
         species=args.override_species,
         tissue=args.override_tissue,
         cluster_annotations={},
-        final_report=""
+        final_report="",
     )
+    if args.skip_graph_a:
+        initial_state["skip_graph_a"] = True
     
     try:
         final_state = master_app.invoke(initial_state)

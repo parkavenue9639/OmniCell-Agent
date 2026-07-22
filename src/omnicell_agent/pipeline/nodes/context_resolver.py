@@ -79,6 +79,11 @@ def _sandbox_path_to_host(sandbox_path: str) -> Optional[str]:
         return None
     if os.path.exists(sandbox_path):
         return sandbox_path
+    if sandbox_path.startswith("/app/data/"):
+        rel = sandbox_path[len("/app/data/"):]
+        host_guess = os.path.join(_project_root(), "data", rel)
+        if os.path.exists(host_guess):
+            return host_guess
     filename = os.path.basename(sandbox_path)
     host_guess = os.path.join(_project_root(), "data", filename)
     if os.path.exists(host_guess):

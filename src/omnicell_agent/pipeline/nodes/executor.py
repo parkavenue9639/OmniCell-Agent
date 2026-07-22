@@ -1,12 +1,30 @@
 import logging
+import os
 from omnicell_agent.schema.state import DataPipeline_State
 from omnicell_agent.sandbox.docker_manager import DockerJupyterSandbox
+from omnicell_agent.core.config import project_root
 from omnicell_agent.core.trace_logger import trace_logger
 
 logger = logging.getLogger(__name__)
 
 # 全局或者生命周期内维持单例 Sandbox
 _sandbox_instance = None
+
+_HOST_DATA_DIR = str(project_root / "data")
+
+
+def _to_sandbox_path(path: str) -> str:
+    """将宿主机绝对 / 相对路径转换为容器内 /app/data/ 路径。"""
+    if not path or path.startswith("/app/data"):
+        return path
+    abs_path = os.path.abspath(path)
+    if abs_path.startswith(_HOST_DATA_DIR):
+        rel = os.path.relpath(abs_path, _HOST_DATA_DIR)
+        return f"/app/data/{rel}"
+    if path.startswith("data/"):
+        return "/app/data/" + path[5:]
+    return path
+
 
 def get_sandbox() -> DockerJupyterSandbox:
     global _sandbox_instance
@@ -34,7 +52,22 @@ def run_executor(state: DataPipeline_State) -> dict:
     sandbox = get_sandbox()
     
     try:
-        # 下放至 Sandbox 执行
+        raw_data_path = _to_sandbox_path(
+            state.get("raw_data_path", "/app/data/pbmc3k_raw.h5ad")
+        )
+        marker_table_path = _to_sandbox_path(
+            state.get("marker_table_path", "/app/data/markers.json")
+        )
+        inject_code = (
+            f"raw_data_path = {raw_data_path!r}\n"
+            f"marker_table_path = {marker_table_path!r}\n"
+        )
+        sandbox.execute_code(inject_code)
+        logger.info(
+            "Injected sandbox globals: raw_data_path=%s, marker_table_path=%s",
+            raw_data_path, marker_table_path,
+        )
+
         # 执行前：使用深拷贝生成沙盒内的上下文环境备份，以防止代码执行崩溃导致 adata 被半脏数据污染
         backup_code = "if 'adata' in locals() or 'adata' in globals(): adata_backup = adata.copy()"
         sandbox.execute_code(backup_code)

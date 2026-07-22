@@ -50,6 +50,15 @@ ENABLE_VISION_EVAL = os.getenv("ENABLE_VISION_EVAL", "True").lower() in ("true",
 # 如果为 False，则系统将降级为类似原生 CASSIA 的 For-loop 串行排队计算
 ENABLE_MAP_REDUCE_CONCURRENCY = os.getenv("ENABLE_MAP_REDUCE_CONCURRENCY", "True").lower() in ("true", "1", "t")
 
+# [泛化基准 / 消融] Graph B Annotator 是否启用三温度自一致性投票
+ENABLE_SELF_CONSISTENCY = os.getenv("ENABLE_SELF_CONSISTENCY", "True").lower() in ("true", "1", "t")
+
+# [泛化基准 / 消融] Graph B 是否在 Reporter 前运行跨簇 consistency_reviewer
+ENABLE_CONSISTENCY_REVIEWER = os.getenv("ENABLE_CONSISTENCY_REVIEWER", "True").lower() in ("true", "1", "t")
+
+# [泛化基准 / 消融] Graph B 微观图中低分簇是否触发 Boost 深潜纠错
+ENABLE_BOOST = os.getenv("ENABLE_BOOST", "True").lower() in ("true", "1", "t")
+
 # ==============================================================================
 # 实验底账与运行记录持久化存储区
 # 为撰写论文图表提供数据支撑的 JSON/SQLite 本地沉淀目录

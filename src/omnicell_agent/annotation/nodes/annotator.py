@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from omnicell_agent.schema.state import Annotation_State
 from omnicell_agent.core.llm_client import LLMSelector
+from omnicell_agent.core.config import ENABLE_SELF_CONSISTENCY
 
 logger = logging.getLogger(__name__)
 
@@ -104,34 +105,40 @@ def annotator_node(state: Annotation_State) -> Dict[str, Any]:
     messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
 
     try:
-        logger.info(
-            f"[Cluster {cluster_id}] 正在拉起 LLM 自一致性投票 ({len(TEMPERATURES)} 次)..."
-        )
-        results: List[AnnotationOutput] = []
-        for temp in TEMPERATURES:
-            results.append(_run_single_annotation(messages, temp))
-
-        labels = [_normalize_vote_label(r.sub_type) for r in results]
-        unique_labels = set(labels)
-        unanimous = len(unique_labels) == 1
-        chosen, _ = _majority_pick(results)
-
-        if not unanimous:
-            vote_summary = (
-                f"[Vote 0.1] {results[0].sub_type} | [Vote 0.4] {results[1].sub_type} | "
-                f"[Vote 0.7] {results[2].sub_type}. Majority: {chosen.sub_type}."
-            )
-            reasoning_merged = (
-                f"{vote_summary}\n\n--- Merged reasoning (majority pick) ---\n{chosen.reasoning_chain}"
-            )
-        else:
+        if not ENABLE_SELF_CONSISTENCY:
+            logger.info(f"[Cluster {cluster_id}] 单轮标注 (ENABLE_SELF_CONSISTENCY=0)")
+            chosen = _run_single_annotation(messages, 0.1)
             reasoning_merged = chosen.reasoning_chain
+            self_ok = True
+        else:
+            logger.info(
+                f"[Cluster {cluster_id}] 正在拉起 LLM 自一致性投票 ({len(TEMPERATURES)} 次)..."
+            )
+            results: List[AnnotationOutput] = []
+            for temp in TEMPERATURES:
+                results.append(_run_single_annotation(messages, temp))
 
-        self_ok = unanimous or (
-            Counter(labels).most_common(1)[0][1] >= 2
-        )  # 至少 2/3 一致视为可接受
-        if len(unique_labels) == 3:
-            self_ok = False
+            labels = [_normalize_vote_label(r.sub_type) for r in results]
+            unique_labels = set(labels)
+            unanimous = len(unique_labels) == 1
+            chosen, _ = _majority_pick(results)
+
+            if not unanimous:
+                vote_summary = (
+                    f"[Vote 0.1] {results[0].sub_type} | [Vote 0.4] {results[1].sub_type} | "
+                    f"[Vote 0.7] {results[2].sub_type}. Majority: {chosen.sub_type}."
+                )
+                reasoning_merged = (
+                    f"{vote_summary}\n\n--- Merged reasoning (majority pick) ---\n{chosen.reasoning_chain}"
+                )
+            else:
+                reasoning_merged = chosen.reasoning_chain
+
+            self_ok = unanimous or (
+                Counter(labels).most_common(1)[0][1] >= 2
+            )  # 至少 2/3 一致视为可接受
+            if len(unique_labels) == 3:
+                self_ok = False
 
         ai_response = AIMessage(
             content=(
