@@ -48,7 +48,17 @@ test_results/
 **/*.json
 **/*.png
 logs/
+*.log
 .runtime_kernels/
+
+# Local documentation, manuscripts, and experiment records
+/docs/
+/paper/
+/experiment_records/
+/scripts/benchmark/README.md
+
+# One-off local maintenance helpers
+/patch.py
 
 # macOS
 .DS_Store
