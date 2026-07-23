@@ -8,8 +8,8 @@
   - ground_truth.json、meta.json：评估与指令
 
 用法:
-  uv run python scripts/benchmark/prepare_datasets.py
-  uv run python scripts/benchmark/prepare_datasets.py --only pbmc3k paul15
+  uv run --package omnicell-agent python scripts/benchmark/prepare_datasets.py
+  uv run --package omnicell-agent python scripts/benchmark/prepare_datasets.py --only pbmc3k paul15
 """
 
 from __future__ import annotations
@@ -22,9 +22,10 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# 项目根
+# Monorepo 根与 backend 包根
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
+BACKEND_ROOT = PROJECT_ROOT / "backend"
+sys.path.insert(0, str(BACKEND_ROOT / "src"))
 
 import pandas as pd  # noqa: E402
 import scanpy as sc  # noqa: E402

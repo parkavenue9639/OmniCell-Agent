@@ -4,7 +4,7 @@ LLM 直标 baseline：无 Validator / Scorer / Boost / ConsistencyReviewer。
 对每个 cluster 仅一次 LLM 调用（与 Annotator 相同的 structured output）。
 
 用法:
-  uv run python scripts/benchmark/run_baseline_annotation.py \\
+  uv run --package omnicell-agent python scripts/benchmark/run_baseline_annotation.py \\
     --markers-json data/benchmark/pbmc3k/gold_markers.json \\
     --output experiment_records/benchmark/pbmc3k_baseline.json \\
     --species Human --tissue PBMC
@@ -20,13 +20,14 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
+BACKEND_ROOT = PROJECT_ROOT / "backend"
+sys.path.insert(0, str(BACKEND_ROOT / "src"))
 
 from langchain_core.messages import HumanMessage, SystemMessage  # noqa: E402
 
+from omnicell_agent import llm  # noqa: E402
 from omnicell_agent.schema.contract import MarkerTableContract  # noqa: E402
 from omnicell_agent.annotation.nodes.annotator import AnnotationOutput  # noqa: E402
-from omnicell_agent.core.llm_client import LLMSelector  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ def main() -> None:
         by_cid[cid].sort(key=lambda x: x.p_val_adj)
 
     cluster_annotations: dict[str, dict] = {}
-    model = LLMSelector.get_llm("onerouter:default", temperature=0.1)
+    model = llm.get_llm_by_alias(llm.LLMRole.ANNOTATION, temperature=0.1)
     structured = model.with_structured_output(AnnotationOutput)
 
     for cid, markers in sorted(by_cid.items(), key=lambda x: int(x[0]) if x[0].isdigit() else x[0]):

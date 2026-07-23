@@ -6,8 +6,8 @@
 自动计算每条件的 mean ± std 并输出到 summary。
 
 用法:
-  uv run python scripts/benchmark/evaluate.py
-  uv run python scripts/benchmark/evaluate.py --runs-root experiment_records/benchmark
+  uv run --package omnicell-agent python scripts/benchmark/evaluate.py
+  uv run --package omnicell-agent python scripts/benchmark/evaluate.py --runs-root experiment_records/benchmark
 """
 
 from __future__ import annotations

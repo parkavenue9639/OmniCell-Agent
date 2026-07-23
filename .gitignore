@@ -38,6 +38,10 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+node_modules/
+playwright-report/
+test-results/
+*.tsbuildinfo
 
 # Data pipeline output and cache
 data/
@@ -45,8 +49,15 @@ outputs/
 test_results/
 **/*.h5ad
 **/*.csv
+!contracts/**/*.csv
+!frontend/tests/fixtures/*.csv
 **/*.json
+!frontend/**/*.json
+!contracts/**/*.json
+!scripts/benchmark/cell_type_synonyms.json
+!scripts/benchmark/hallucination_keywords.json
 **/*.png
+!frontend/**/*.png
 logs/
 *.log
 .runtime_kernels/

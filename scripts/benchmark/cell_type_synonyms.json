@@ -1,0 +1,157 @@
+{
+  "CD14+ Monocytes": [
+    "CD14+ Mono", "Classical Monocytes", "CD14 Monocytes", "Monocytes",
+    "Classical monocytes", "CD14+ Classical Monocytes", "classical monocyte"
+  ],
+  "CD16+ Monocytes": [
+    "Non-classical monocytes", "CD16 Monocytes", "FCGR3A+ Monocytes",
+    "Non-classical Monocytes", "CD16+ Non-classical Monocytes", "non-classical monocyte"
+  ],
+  "NK cells": [
+    "Natural Killer cells", "NK cell", "NK Cells", "natural killer cell",
+    "CD56+ NK cells", "CD56bright NK cells", "CD56dim NK cells"
+  ],
+  "CD8 T cells": [
+    "CD8+ T cells", "CD8 T", "Cytotoxic T", "CD8+ T", "CD8+ Cytotoxic T cells",
+    "CD8+ Effector Memory T cells", "CD8+ TEM", "CD8+ Effector T cells",
+    "CD8+ Central Memory T cells", "CD8+ TCM", "CD8+ Naive T cells",
+    "Cytotoxic T lymphocytes", "CTL", "CD8-positive, alpha-beta T cell"
+  ],
+  "CD4 T cells": [
+    "CD4+ T cells", "CD4 T", "Helper T", "CD4+ T", "CD4+ Helper T cells",
+    "Naive CD4+ T cells", "CD4+ Naive T cells", "CD4+ Memory T cells",
+    "CD4+ Central Memory T cells", "CD4+ Effector Memory T cells",
+    "CD4+ TCM", "CD4+ TEM", "T helper cells", "Th cells"
+  ],
+  "B cells": [
+    "B cell", "B lymphocyte", "B lymphocytes",
+    "Naive B cells", "Memory B cells", "B Cells"
+  ],
+  "Dendritic cells": [
+    "DC", "Dendritic cell", "cDC", "pDC", "cDC1", "cDC2",
+    "Conventional Dendritic cells", "Plasmacytoid Dendritic cells",
+    "Myeloid Dendritic cells", "mDC", "Conventional DC",
+    "Plasmacytoid DC", "Conventional dendritic cells type 2",
+    "myeloid dendritic cell"
+  ],
+  "Plasma cells": ["Plasma cell", "Plasma B"],
+  "Megakaryocytes": [
+    "Mk", "MK", "Platelets", "Platelet", "Megakaryocyte",
+    "Megakaryocyte-Platelet lineage", "8Mk"
+  ],
+  "Neutrophils": ["Neu", "Neutrophil", "neutrophil", "16Neu", "17Neu"],
+  "Erythrocytes": ["Ery", "RBC", "Red blood"],
+  "Monocytes": ["Mono", "Monocyte", "classical monocyte", "non-classical monocyte", "14Mo", "15Mo"],
+  "FCGR3A+ Monocytes": [
+    "CD16+ Monocytes", "Non-classical monocytes", "Non-classical Monocytes"
+  ],
+  "acinar": [
+    "Acinar cells", "pancreatic acinar", "Acinar cell", "pancreatic acinar cells"
+  ],
+  "alpha": [
+    "Pancreatic alpha cells", "Alpha cells", "Glucagon-producing cells", "alpha cells"
+  ],
+  "beta": [
+    "Pancreatic beta cells", "Beta cells", "Insulin-producing cells", "beta cells"
+  ],
+  "delta": [
+    "Pancreatic delta cells", "Delta cells", "Somatostatin cells", "delta cells"
+  ],
+  "gamma": [
+    "Pancreatic gamma cells", "PP cells", "gamma cells"
+  ],
+  "ductal": [
+    "Pancreatic ductal cells", "Ductal cells", "ductal cells"
+  ],
+  "endothelial": [
+    "Endothelial cells", "vascular endothelial", "endothelial cell"
+  ],
+  "activated_stellate": [
+    "Activated pancreatic stellate cells", "PSC", "stellate cells activated"
+  ],
+  "quiescent_stellate": [
+    "Quiescent stellate cells", "pancreatic stellate", "qPSC"
+  ],
+  "macrophage": [
+    "Macrophages", "tissue macrophage", "M1 macrophage", "M2 macrophage"
+  ],
+  "mast": [
+    "Mast cells", "mast cell"
+  ],
+  "alveolar macrophage": [
+    "Alveolar Macrophages", "lung macrophage", "AM", "interstitial macrophage"
+  ],
+  "natural killer cell": [
+    "NK cells", "NK cell", "Natural killer cells"
+  ],
+  "classical monocyte": [
+    "Classical monocytes", "CD14+ classical monocyte"
+  ],
+  "non-classical monocyte": [
+    "Non-classical monocytes", "CD16+ monocyte"
+  ],
+  "bronchial smooth muscle cell": [
+    "Airway smooth muscle", "smooth muscle cells bronchial", "bronchial smooth muscle"
+  ],
+  "fibroblast of lung": [
+    "Lung fibroblasts", "pulmonary fibroblast"
+  ],
+  "pulmonary interstitial fibroblast": [
+    "Lung interstitial fibroblast", "interstitial fibroblast", "Lung fibroblast interstitial"
+  ],
+  "pulmonary alveolar type 2 cell": [
+    "AT2 cell", "Type II alveolar cell", "surfactant secreting cell", "alveolar type 2"
+  ],
+  "pericyte": [
+    "Pericytes", "Rouget cell"
+  ],
+  "ciliated columnar cell of tracheobronchial tree": [
+    "Ciliated epithelial cells", "ciliated columnar epithelial"
+  ],
+  "endothelial cell of lymphatic vessel": [
+    "Lymphatic endothelial cells", "LEC"
+  ],
+  "basophil": [
+    "Basophils", "basophilic granulocyte", "12Baso", "13Baso"
+  ],
+  "adventitial cell": [
+    "Adventitial fibroblast", "vascular adventitial cell"
+  ],
+  "neutrophil": [
+    "Neutrophils", "PMN", "polymorphonuclear leukocyte"
+  ],
+  "T cell": [
+    "T lymphocyte", "T-cell", "T cells"
+  ],
+  "Erythroid progenitors": [
+    "Erythroid", "Ery progenitor", "1Ery", "2Ery", "3Ery", "4Ery", "5Ery", "6Ery",
+    "Erythrocyte progenitor", "erythroid precursor"
+  ],
+  "MEP": [
+    "Megakaryocyte-Erythroid Progenitor", "Megakaryocyte-erythrocyte progenitor",
+    "7MEP", "MkE progenitor"
+  ],
+  "GMP": [
+    "Granulocyte-Monocyte Progenitor", "Granulocyte-monocyte progenitor",
+    "9GMP", "10GMP", "GM progenitor"
+  ],
+  "HSC": [
+    "Hematopoietic Stem Cell", "hematopoietic stem cell",
+    "Hematopoietic stem cells", "HSPC"
+  ],
+  "MPP": [
+    "Multipotent Progenitor", "multipotent progenitor"
+  ],
+  "CMP": [
+    "Common Myeloid Progenitor", "common myeloid progenitor"
+  ],
+  "CLP": [
+    "Common Lymphoid Progenitor", "common lymphoid progenitor"
+  ],
+  "Eosinophils": [
+    "Eos", "Eosinophil", "eosinophilic granulocyte", "18Eos"
+  ],
+  "Lymphocytes": [
+    "Lymph", "lymphocyte", "19Lymph"
+  ]
+}

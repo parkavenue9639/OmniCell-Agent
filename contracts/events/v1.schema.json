@@ -1,0 +1,3105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "persisted": {
+    "$defs": {
+      "AgentTurnStartedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/AgentTurnStartedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "agent.turn_started",
+            "default": "agent.turn_started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "AgentTurnStartedEvent",
+        "type": "object"
+      },
+      "AgentTurnStartedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "remaining_turns": {
+            "maximum": 10000,
+            "minimum": 0,
+            "title": "Remaining Turns",
+            "type": "integer"
+          },
+          "turn_index": {
+            "maximum": 10000,
+            "minimum": 1,
+            "title": "Turn Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "turn_index",
+          "remaining_turns"
+        ],
+        "title": "AgentTurnStartedPayload",
+        "type": "object"
+      },
+      "ArtifactCreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/ArtifactCreatedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "artifact.created",
+            "default": "artifact.created",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "ArtifactCreatedEvent",
+        "type": "object"
+      },
+      "ArtifactCreatedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "kind": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Media Type"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "maximum": 1125899906842624,
+            "minimum": 0,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "kind",
+          "size_bytes",
+          "sha256"
+        ],
+        "title": "ArtifactCreatedPayload",
+        "type": "object"
+      },
+      "BudgetExhaustedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/BudgetExhaustedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "budget.exhausted",
+            "default": "budget.exhausted",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "BudgetExhaustedEvent",
+        "type": "object"
+      },
+      "BudgetExhaustedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "budget": {
+            "$ref": "#/$defs/BudgetKind"
+          },
+          "limit": {
+            "maximum": 1000000000,
+            "minimum": 0,
+            "title": "Limit",
+            "type": "number"
+          },
+          "unit": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "used": {
+            "maximum": 1000000000,
+            "minimum": 0,
+            "title": "Used",
+            "type": "number"
+          }
+        },
+        "required": [
+          "budget",
+          "limit",
+          "used",
+          "unit"
+        ],
+        "title": "BudgetExhaustedPayload",
+        "type": "object"
+      },
+      "BudgetKind": {
+        "enum": [
+          "turn",
+          "wall_time",
+          "model_call",
+          "capability_call",
+          "retry"
+        ],
+        "title": "BudgetKind",
+        "type": "string"
+      },
+      "CapabilityCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/CapabilityCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "capability.completed",
+            "default": "capability.completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "CapabilityCompletedEvent",
+        "type": "object"
+      },
+      "CapabilityCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Artifact Ids",
+            "type": "array"
+          },
+          "attempt": {
+            "default": 1,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "result_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "completed",
+                  "aborted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Result Status"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Summary"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "capability_call_id",
+          "capability_name"
+        ],
+        "title": "CapabilityCompletedPayload",
+        "type": "object"
+      },
+      "CapabilityFailedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/CapabilityFailedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "capability.failed",
+            "default": "capability.failed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "CapabilityFailedEvent",
+        "type": "object"
+      },
+      "CapabilityFailedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "error_code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Error Summary",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "capability_call_id",
+          "capability_name",
+          "error_code",
+          "error_summary",
+          "retryable"
+        ],
+        "title": "CapabilityFailedPayload",
+        "type": "object"
+      },
+      "CapabilityProgressEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/CapabilityProgressPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "capability.progress",
+            "default": "capability.progress",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "CapabilityProgressEvent",
+        "type": "object"
+      },
+      "CapabilityProgressPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "current": {
+            "maximum": 1000000000,
+            "minimum": 1,
+            "title": "Current",
+            "type": "integer"
+          },
+          "message": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "stage": {
+            "const": "isolated_execution",
+            "default": "isolated_execution",
+            "title": "Stage",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "maximum": 1000000000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          }
+        },
+        "required": [
+          "capability_call_id",
+          "capability_name",
+          "current",
+          "message"
+        ],
+        "title": "CapabilityProgressPayload",
+        "type": "object"
+      },
+      "CapabilityRetryingEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/CapabilityRetryingPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "capability.retrying",
+            "default": "capability.retrying",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "CapabilityRetryingEvent",
+        "type": "object"
+      },
+      "CapabilityRetryingPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "delay_seconds": {
+            "maximum": 3600,
+            "minimum": 0,
+            "title": "Delay Seconds",
+            "type": "number"
+          },
+          "next_attempt": {
+            "maximum": 100,
+            "minimum": 2,
+            "title": "Next Attempt",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "capability_call_id",
+          "capability_name",
+          "next_attempt",
+          "delay_seconds",
+          "reason"
+        ],
+        "title": "CapabilityRetryingPayload",
+        "type": "object"
+      },
+      "CapabilityStartedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/CapabilityStartedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "capability.started",
+            "default": "capability.started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "CapabilityStartedEvent",
+        "type": "object"
+      },
+      "CapabilityStartedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "capability_call_id",
+          "capability_name"
+        ],
+        "title": "CapabilityStartedPayload",
+        "type": "object"
+      },
+      "MessageCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/MessageCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "message.completed",
+            "default": "message.completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "MessageCompletedEvent",
+        "type": "object"
+      },
+      "MessageCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 20000,
+            "title": "Content",
+            "type": "string"
+          },
+          "content_artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Content Artifact Id"
+          },
+          "has_tool_calls": {
+            "default": false,
+            "title": "Has Tool Calls",
+            "type": "boolean"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/$defs/MessageRole"
+          },
+          "stop_reason": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stop Reason"
+          },
+          "turn_index": {
+            "anyOf": [
+              {
+                "maximum": 10000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Turn Index"
+          }
+        },
+        "required": [
+          "message_id",
+          "role",
+          "content"
+        ],
+        "title": "MessageCompletedPayload",
+        "type": "object"
+      },
+      "MessageRole": {
+        "enum": [
+          "user",
+          "assistant",
+          "system",
+          "tool"
+        ],
+        "title": "MessageRole",
+        "type": "string"
+      },
+      "ReviewDecision": {
+        "enum": [
+          "approve",
+          "reject"
+        ],
+        "title": "ReviewDecision",
+        "type": "string"
+      },
+      "ReviewRequestedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/ReviewRequestedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "review.requested",
+            "default": "review.requested",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "ReviewRequestedEvent",
+        "type": "object"
+      },
+      "ReviewRequestedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "prompt": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "review_id": {
+            "format": "uuid",
+            "title": "Review Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "pending",
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "review_id",
+          "prompt"
+        ],
+        "title": "ReviewRequestedPayload",
+        "type": "object"
+      },
+      "ReviewResolvedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/ReviewResolvedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "review.resolved",
+            "default": "review.resolved",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "ReviewResolvedEvent",
+        "type": "object"
+      },
+      "ReviewResolvedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Comment"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ReviewDecision"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "review_id": {
+            "format": "uuid",
+            "title": "Review Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "approved",
+              "rejected",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_id",
+          "status"
+        ],
+        "title": "ReviewResolvedPayload",
+        "type": "object"
+      },
+      "RunCancelRequestedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/RunCancelRequestedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.cancel_requested",
+            "default": "run.cancel_requested",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunCancelRequestedEvent",
+        "type": "object"
+      },
+      "RunCancelRequestedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "status": {
+            "const": "cancelling",
+            "default": "cancelling",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "RunCancelRequestedPayload",
+        "type": "object"
+      },
+      "RunCancelledEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/RunCancelledPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.cancelled",
+            "default": "run.cancelled",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunCancelledEvent",
+        "type": "object"
+      },
+      "RunCancelledPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "status": {
+            "const": "cancelled",
+            "default": "cancelled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "RunCancelledPayload",
+        "type": "object"
+      },
+      "RunCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/RunCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.completed",
+            "default": "run.completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunCompletedEvent",
+        "type": "object"
+      },
+      "RunCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Artifact Ids",
+            "type": "array"
+          },
+          "final_message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Final Message Id"
+          },
+          "status": {
+            "const": "completed",
+            "default": "completed",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "RunCompletedPayload",
+        "type": "object"
+      },
+      "RunCreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/RunCreatedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.created",
+            "default": "run.created",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunCreatedEvent",
+        "type": "object"
+      },
+      "RunCreatedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "pending",
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "RunCreatedPayload",
+        "type": "object"
+      },
+      "RunFailedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/RunFailedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.failed",
+            "default": "run.failed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunFailedEvent",
+        "type": "object"
+      },
+      "RunFailedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "error_code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Error Summary",
+            "type": "string"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "status": {
+            "const": "failed",
+            "default": "failed",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error_code",
+          "error_summary"
+        ],
+        "title": "RunFailedPayload",
+        "type": "object"
+      },
+      "RunInterruptedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/RunInterruptedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.interrupted",
+            "default": "run.interrupted",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunInterruptedEvent",
+        "type": "object"
+      },
+      "RunInterruptedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "resumable": {
+            "const": true,
+            "default": true,
+            "title": "Resumable",
+            "type": "boolean"
+          },
+          "review_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Review Id"
+          },
+          "status": {
+            "const": "review_required",
+            "default": "review_required",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RunInterruptedPayload",
+        "type": "object"
+      },
+      "RunStartedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/RunStartedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.started",
+            "default": "run.started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunStartedEvent",
+        "type": "object"
+      },
+      "RunStartedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "running",
+            "default": "running",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "RunStartedPayload",
+        "type": "object"
+      },
+      "RuntimeCommandCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/RuntimeCommandCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "runtime.command_completed",
+            "default": "runtime.command_completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RuntimeCommandCompletedEvent",
+        "type": "object"
+      },
+      "RuntimeCommandCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "duration_ms": {
+            "maximum": 86400000,
+            "minimum": 0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "maximum": 255,
+                "minimum": -255,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exit Code"
+          },
+          "outcome": {
+            "enum": [
+              "completed",
+              "failed",
+              "timeout",
+              "cancelled"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "redacted": {
+            "default": false,
+            "title": "Redacted",
+            "type": "boolean"
+          },
+          "runtime_command_id": {
+            "format": "uuid",
+            "title": "Runtime Command Id",
+            "type": "string"
+          },
+          "stderr_observed_bytes": {
+            "maximum": 1073741824,
+            "minimum": 0,
+            "title": "Stderr Observed Bytes",
+            "type": "integer"
+          },
+          "stderr_published_bytes": {
+            "maximum": 1073741824,
+            "minimum": 0,
+            "title": "Stderr Published Bytes",
+            "type": "integer"
+          },
+          "stderr_truncated": {
+            "default": false,
+            "title": "Stderr Truncated",
+            "type": "boolean"
+          },
+          "stdout_observed_bytes": {
+            "maximum": 1073741824,
+            "minimum": 0,
+            "title": "Stdout Observed Bytes",
+            "type": "integer"
+          },
+          "stdout_published_bytes": {
+            "maximum": 1073741824,
+            "minimum": 0,
+            "title": "Stdout Published Bytes",
+            "type": "integer"
+          },
+          "stdout_truncated": {
+            "default": false,
+            "title": "Stdout Truncated",
+            "type": "boolean"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "runtime_command_id",
+          "capability_call_id",
+          "capability_name",
+          "outcome",
+          "duration_ms",
+          "stdout_observed_bytes",
+          "stdout_published_bytes",
+          "stderr_observed_bytes",
+          "stderr_published_bytes"
+        ],
+        "title": "RuntimeCommandCompletedPayload",
+        "type": "object"
+      },
+      "RuntimeCommandStartedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/RuntimeCommandStartedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "runtime.command_started",
+            "default": "runtime.command_started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RuntimeCommandStartedEvent",
+        "type": "object"
+      },
+      "RuntimeCommandStartedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "backend": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Backend",
+            "type": "string"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 24000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Code"
+          },
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Command",
+            "type": "array"
+          },
+          "command_truncated": {
+            "default": false,
+            "title": "Command Truncated",
+            "type": "boolean"
+          },
+          "redacted": {
+            "default": false,
+            "title": "Redacted",
+            "type": "boolean"
+          },
+          "runtime_command_id": {
+            "format": "uuid",
+            "title": "Runtime Command Id",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          },
+          "workdir": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Workdir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtime_command_id",
+          "capability_call_id",
+          "capability_name",
+          "backend",
+          "command",
+          "workdir"
+        ],
+        "title": "RuntimeCommandStartedPayload",
+        "type": "object"
+      },
+      "RuntimeOutputEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/RuntimeOutputPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "runtime.output",
+            "default": "runtime.output",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RuntimeOutputEvent",
+        "type": "object"
+      },
+      "RuntimeOutputPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "chunk": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Chunk",
+            "type": "string"
+          },
+          "encoding": {
+            "default": "utf8",
+            "enum": [
+              "utf8",
+              "utf8_replacement"
+            ],
+            "title": "Encoding",
+            "type": "string"
+          },
+          "index": {
+            "maximum": 1000000,
+            "minimum": 0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "redacted": {
+            "default": false,
+            "title": "Redacted",
+            "type": "boolean"
+          },
+          "runtime_command_id": {
+            "format": "uuid",
+            "title": "Runtime Command Id",
+            "type": "string"
+          },
+          "stream": {
+            "enum": [
+              "stdout",
+              "stderr"
+            ],
+            "title": "Stream",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "runtime_command_id",
+          "capability_call_id",
+          "capability_name",
+          "stream",
+          "index",
+          "chunk"
+        ],
+        "title": "RuntimeOutputPayload",
+        "type": "object"
+      },
+      "SkillLoadCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/SkillLoadCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "skill.load_completed",
+            "default": "skill.load_completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "SkillLoadCompletedEvent",
+        "type": "object"
+      },
+      "SkillLoadCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "content_bytes": {
+            "maximum": 65536,
+            "minimum": 0,
+            "title": "Content Bytes",
+            "type": "integer"
+          },
+          "outcome": {
+            "enum": [
+              "loaded",
+              "already_loaded"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "domain_method",
+              "validation_rules",
+              "workflow_guidance",
+              "reference_lookup",
+              "example_lookup"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "resource_kind": {
+            "enum": [
+              "body",
+              "reference",
+              "example"
+            ],
+            "title": "Resource Kind",
+            "type": "string"
+          },
+          "resource_name": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Resource Name"
+          },
+          "skill_load_id": {
+            "format": "uuid",
+            "title": "Skill Load Id",
+            "type": "string"
+          },
+          "skill_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "title": "Skill Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill_load_id",
+          "skill_name",
+          "resource_kind",
+          "purpose",
+          "outcome",
+          "content_bytes"
+        ],
+        "title": "SkillLoadCompletedPayload",
+        "type": "object"
+      },
+      "SkillLoadFailedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/SkillLoadFailedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "skill.load_failed",
+            "default": "skill.load_failed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "SkillLoadFailedEvent",
+        "type": "object"
+      },
+      "SkillLoadFailedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "error_code": {
+            "const": "skill_resource_unavailable",
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_summary": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Error Summary",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "domain_method",
+              "validation_rules",
+              "workflow_guidance",
+              "reference_lookup",
+              "example_lookup"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "resource_kind": {
+            "enum": [
+              "body",
+              "reference",
+              "example"
+            ],
+            "title": "Resource Kind",
+            "type": "string"
+          },
+          "resource_name": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Resource Name"
+          },
+          "skill_load_id": {
+            "format": "uuid",
+            "title": "Skill Load Id",
+            "type": "string"
+          },
+          "skill_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "title": "Skill Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill_load_id",
+          "skill_name",
+          "resource_kind",
+          "purpose",
+          "error_code",
+          "error_summary"
+        ],
+        "title": "SkillLoadFailedPayload",
+        "type": "object"
+      },
+      "SkillLoadStartedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/SkillLoadStartedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "skill.load_started",
+            "default": "skill.load_started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "SkillLoadStartedEvent",
+        "type": "object"
+      },
+      "SkillLoadStartedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "enum": [
+              "domain_method",
+              "validation_rules",
+              "workflow_guidance",
+              "reference_lookup",
+              "example_lookup"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "resource_kind": {
+            "enum": [
+              "body",
+              "reference",
+              "example"
+            ],
+            "title": "Resource Kind",
+            "type": "string"
+          },
+          "resource_name": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Resource Name"
+          },
+          "skill_load_id": {
+            "format": "uuid",
+            "title": "Skill Load Id",
+            "type": "string"
+          },
+          "skill_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "title": "Skill Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill_load_id",
+          "skill_name",
+          "resource_kind",
+          "purpose"
+        ],
+        "title": "SkillLoadStartedPayload",
+        "type": "object"
+      },
+      "TaskCreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/TaskCreatedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "task.created",
+            "default": "task.created",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "TaskCreatedEvent",
+        "type": "object"
+      },
+      "TaskCreatedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "capability_name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Capability Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "const": "pending",
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "title"
+        ],
+        "title": "TaskCreatedPayload",
+        "type": "object"
+      },
+      "TaskStatus": {
+        "enum": [
+          "pending",
+          "in_progress",
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "title": "TaskStatus",
+        "type": "string"
+      },
+      "TaskUpdatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/TaskUpdatedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "task.updated",
+            "default": "task.updated",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "TaskUpdatedEvent",
+        "type": "object"
+      },
+      "TaskUpdatedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "$ref": "#/$defs/TaskStatus"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Summary"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "status"
+        ],
+        "title": "TaskUpdatedPayload",
+        "type": "object"
+      }
+    },
+    "discriminator": {
+      "mapping": {
+        "agent.turn_started": "#/$defs/AgentTurnStartedEvent",
+        "artifact.created": "#/$defs/ArtifactCreatedEvent",
+        "budget.exhausted": "#/$defs/BudgetExhaustedEvent",
+        "capability.completed": "#/$defs/CapabilityCompletedEvent",
+        "capability.failed": "#/$defs/CapabilityFailedEvent",
+        "capability.progress": "#/$defs/CapabilityProgressEvent",
+        "capability.retrying": "#/$defs/CapabilityRetryingEvent",
+        "capability.started": "#/$defs/CapabilityStartedEvent",
+        "message.completed": "#/$defs/MessageCompletedEvent",
+        "review.requested": "#/$defs/ReviewRequestedEvent",
+        "review.resolved": "#/$defs/ReviewResolvedEvent",
+        "run.cancel_requested": "#/$defs/RunCancelRequestedEvent",
+        "run.cancelled": "#/$defs/RunCancelledEvent",
+        "run.completed": "#/$defs/RunCompletedEvent",
+        "run.created": "#/$defs/RunCreatedEvent",
+        "run.failed": "#/$defs/RunFailedEvent",
+        "run.interrupted": "#/$defs/RunInterruptedEvent",
+        "run.started": "#/$defs/RunStartedEvent",
+        "runtime.command_completed": "#/$defs/RuntimeCommandCompletedEvent",
+        "runtime.command_started": "#/$defs/RuntimeCommandStartedEvent",
+        "runtime.output": "#/$defs/RuntimeOutputEvent",
+        "skill.load_completed": "#/$defs/SkillLoadCompletedEvent",
+        "skill.load_failed": "#/$defs/SkillLoadFailedEvent",
+        "skill.load_started": "#/$defs/SkillLoadStartedEvent",
+        "task.created": "#/$defs/TaskCreatedEvent",
+        "task.updated": "#/$defs/TaskUpdatedEvent"
+      },
+      "propertyName": "type"
+    },
+    "oneOf": [
+      {
+        "$ref": "#/$defs/RunCreatedEvent"
+      },
+      {
+        "$ref": "#/$defs/RunStartedEvent"
+      },
+      {
+        "$ref": "#/$defs/AgentTurnStartedEvent"
+      },
+      {
+        "$ref": "#/$defs/MessageCompletedEvent"
+      },
+      {
+        "$ref": "#/$defs/TaskCreatedEvent"
+      },
+      {
+        "$ref": "#/$defs/TaskUpdatedEvent"
+      },
+      {
+        "$ref": "#/$defs/SkillLoadStartedEvent"
+      },
+      {
+        "$ref": "#/$defs/SkillLoadCompletedEvent"
+      },
+      {
+        "$ref": "#/$defs/SkillLoadFailedEvent"
+      },
+      {
+        "$ref": "#/$defs/CapabilityStartedEvent"
+      },
+      {
+        "$ref": "#/$defs/CapabilityCompletedEvent"
+      },
+      {
+        "$ref": "#/$defs/CapabilityFailedEvent"
+      },
+      {
+        "$ref": "#/$defs/CapabilityRetryingEvent"
+      },
+      {
+        "$ref": "#/$defs/CapabilityProgressEvent"
+      },
+      {
+        "$ref": "#/$defs/RuntimeCommandStartedEvent"
+      },
+      {
+        "$ref": "#/$defs/RuntimeOutputEvent"
+      },
+      {
+        "$ref": "#/$defs/RuntimeCommandCompletedEvent"
+      },
+      {
+        "$ref": "#/$defs/ArtifactCreatedEvent"
+      },
+      {
+        "$ref": "#/$defs/ReviewRequestedEvent"
+      },
+      {
+        "$ref": "#/$defs/ReviewResolvedEvent"
+      },
+      {
+        "$ref": "#/$defs/BudgetExhaustedEvent"
+      },
+      {
+        "$ref": "#/$defs/RunCancelRequestedEvent"
+      },
+      {
+        "$ref": "#/$defs/RunInterruptedEvent"
+      },
+      {
+        "$ref": "#/$defs/RunCompletedEvent"
+      },
+      {
+        "$ref": "#/$defs/RunFailedEvent"
+      },
+      {
+        "$ref": "#/$defs/RunCancelledEvent"
+      }
+    ]
+  },
+  "title": "OmniCell Agent Event Contract v1",
+  "transient": {
+    "$defs": {
+      "AssistantDeltaEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/AssistantDeltaPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "type": {
+            "const": "assistant.delta",
+            "default": "assistant.delta",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "type",
+          "payload"
+        ],
+        "title": "AssistantDeltaEvent",
+        "type": "object"
+      },
+      "AssistantDeltaPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "delta": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Delta",
+            "type": "string"
+          },
+          "index": {
+            "maximum": 1000000000,
+            "minimum": 0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "index",
+          "delta"
+        ],
+        "title": "AssistantDeltaPayload",
+        "type": "object"
+      }
+    },
+    "discriminator": {
+      "mapping": {
+        "assistant.delta": "#/$defs/AssistantDeltaEvent"
+      },
+      "propertyName": "type"
+    },
+    "oneOf": [
+      {
+        "$ref": "#/$defs/AssistantDeltaEvent"
+      }
+    ]
+  }
+}

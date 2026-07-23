@@ -7,7 +7,7 @@ import json
 
 # 向 Python 路径中插入 src，以便从我们自己的图解契约库中拉取定义
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../backend/src")))
 
 from omnicell_agent.schema.contract import MarkerTableContract, MarkerGene
 from omnicell_agent.core.logger import logger
