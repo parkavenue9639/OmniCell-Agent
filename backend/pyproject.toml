@@ -1,0 +1,53 @@
+[build-system]
+requires = ["uv_build>=0.10.10,<0.11"]
+build-backend = "uv_build"
+
+[project]
+name = "omnicell-agent"
+version = "0.1.0"
+description = "End-to-End scRNA-seq analysis agent framework based on LangGraph and CASSIA insights"
+readme = "README.md"
+authors = [
+    { name = "luchong" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.0.25",
+    "langchain>=0.1.10",
+    "langchain-openai>=0.1.0",
+    "pydantic>=2.6.0",
+    "pandas>=2.0.0",
+    "scanpy>=1.9.0",
+    "scipy>=1.10.0",
+    "python-dotenv>=1.0.0",
+    "leidenalg>=0.11.0",
+    "igraph>=1.0.0",
+    "alembic>=1.16,<2",
+    "sqlalchemy[asyncio]>=2.0,<3",
+    "psycopg[binary,pool]>=3.2,<4",
+    "langgraph-checkpoint==4.0.1",
+    "langgraph-checkpoint-postgres>=3.0.5,<3.1",
+    "fastapi>=0.116,<1",
+    "python-multipart>=0.0.20,<1",
+    "uvicorn>=0.35,<1",
+]
+
+[project.scripts]
+omnicell-api = "omnicell_agent.api.cli:main"
+omnicell-db = "omnicell_agent.persistence.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.28,<1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+    "live_llm: 需要显式启用并访问真实模型的观察性测试",
+    "docker: 需要显式启用并连接本地 Docker daemon 的观察性测试",
+    "postgres: 需要显式 PostgreSQL DSN 的真实持久化集成测试",
+]

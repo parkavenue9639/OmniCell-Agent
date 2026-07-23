@@ -1,0 +1,5260 @@
+{
+  "components": {
+    "schemas": {
+      "AgentTurnStartedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/AgentTurnStartedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "agent.turn_started",
+            "default": "agent.turn_started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "AgentTurnStartedEvent",
+        "type": "object"
+      },
+      "AgentTurnStartedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "remaining_turns": {
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Remaining Turns",
+            "type": "integer"
+          },
+          "turn_index": {
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Turn Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "turn_index",
+          "remaining_turns"
+        ],
+        "title": "AgentTurnStartedPayload",
+        "type": "object"
+      },
+      "ArtifactCreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/ArtifactCreatedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "artifact.created",
+            "default": "artifact.created",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "ArtifactCreatedEvent",
+        "type": "object"
+      },
+      "ArtifactCreatedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "kind": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "maximum": 1125899906842624.0,
+            "minimum": 0.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "kind",
+          "size_bytes",
+          "sha256"
+        ],
+        "title": "ArtifactCreatedPayload",
+        "type": "object"
+      },
+      "ArtifactListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRead"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "items",
+          "page"
+        ],
+        "title": "ArtifactListResponse",
+        "type": "object"
+      },
+      "ArtifactRead": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "maxProperties": 50,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "maximum": 1125899906842624.0,
+            "minimum": 0.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "source_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Event Id"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "conversation_id",
+          "kind",
+          "size_bytes",
+          "sha256",
+          "created_at"
+        ],
+        "title": "ArtifactRead",
+        "type": "object"
+      },
+      "Body_uploadArtifact": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "要导入 conversation workspace 的文件",
+            "title": "File",
+            "type": "string"
+          },
+          "kind": {
+            "default": "dataset",
+            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_uploadArtifact",
+        "type": "object"
+      },
+      "BudgetExhaustedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BudgetExhaustedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "budget.exhausted",
+            "default": "budget.exhausted",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "BudgetExhaustedEvent",
+        "type": "object"
+      },
+      "BudgetExhaustedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/BudgetKind"
+          },
+          "limit": {
+            "maximum": 1000000000.0,
+            "minimum": 0.0,
+            "title": "Limit",
+            "type": "number"
+          },
+          "unit": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "used": {
+            "maximum": 1000000000.0,
+            "minimum": 0.0,
+            "title": "Used",
+            "type": "number"
+          }
+        },
+        "required": [
+          "budget",
+          "limit",
+          "used",
+          "unit"
+        ],
+        "title": "BudgetExhaustedPayload",
+        "type": "object"
+      },
+      "BudgetKind": {
+        "enum": [
+          "turn",
+          "wall_time",
+          "model_call",
+          "capability_call",
+          "retry"
+        ],
+        "title": "BudgetKind",
+        "type": "string"
+      },
+      "CapabilityCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/CapabilityCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "capability.completed",
+            "default": "capability.completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "CapabilityCompletedEvent",
+        "type": "object"
+      },
+      "CapabilityCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Artifact Ids",
+            "type": "array"
+          },
+          "attempt": {
+            "default": 1,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "result_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "completed",
+                  "aborted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Status"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "capability_call_id",
+          "capability_name"
+        ],
+        "title": "CapabilityCompletedPayload",
+        "type": "object"
+      },
+      "CapabilityFailedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/CapabilityFailedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "capability.failed",
+            "default": "capability.failed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "CapabilityFailedEvent",
+        "type": "object"
+      },
+      "CapabilityFailedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "error_code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Error Summary",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "capability_call_id",
+          "capability_name",
+          "error_code",
+          "error_summary",
+          "retryable"
+        ],
+        "title": "CapabilityFailedPayload",
+        "type": "object"
+      },
+      "CapabilityProgressEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/CapabilityProgressPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "capability.progress",
+            "default": "capability.progress",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "CapabilityProgressEvent",
+        "type": "object"
+      },
+      "CapabilityProgressPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "current": {
+            "maximum": 1000000000.0,
+            "minimum": 1.0,
+            "title": "Current",
+            "type": "integer"
+          },
+          "message": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "stage": {
+            "const": "isolated_execution",
+            "default": "isolated_execution",
+            "title": "Stage",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "maximum": 1000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "required": [
+          "capability_call_id",
+          "capability_name",
+          "current",
+          "message"
+        ],
+        "title": "CapabilityProgressPayload",
+        "type": "object"
+      },
+      "CapabilityRetryingEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/CapabilityRetryingPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "capability.retrying",
+            "default": "capability.retrying",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "CapabilityRetryingEvent",
+        "type": "object"
+      },
+      "CapabilityRetryingPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "delay_seconds": {
+            "maximum": 3600.0,
+            "minimum": 0.0,
+            "title": "Delay Seconds",
+            "type": "number"
+          },
+          "next_attempt": {
+            "maximum": 100.0,
+            "minimum": 2.0,
+            "title": "Next Attempt",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "capability_call_id",
+          "capability_name",
+          "next_attempt",
+          "delay_seconds",
+          "reason"
+        ],
+        "title": "CapabilityRetryingPayload",
+        "type": "object"
+      },
+      "CapabilityStartedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/CapabilityStartedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "capability.started",
+            "default": "capability.started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "CapabilityStartedEvent",
+        "type": "object"
+      },
+      "CapabilityStartedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "capability_call_id",
+          "capability_name"
+        ],
+        "title": "CapabilityStartedPayload",
+        "type": "object"
+      },
+      "ConversationCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "ConversationCreateRequest",
+        "type": "object"
+      },
+      "ConversationListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationRead"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "ConversationListResponse",
+        "type": "object"
+      },
+      "ConversationRead": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Artifact Id"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConversationStatus"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ConversationRead",
+        "type": "object"
+      },
+      "ConversationStatus": {
+        "enum": [
+          "active",
+          "archived"
+        ],
+        "title": "ConversationStatus",
+        "type": "string"
+      },
+      "ErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "message": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorInfo"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "error"
+        ],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "ErrorInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "maxItems": 50,
+            "title": "Details",
+            "type": "array"
+          },
+          "message": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorInfo",
+        "type": "object"
+      },
+      "EventReplayResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "agent.turn_started": "#/components/schemas/AgentTurnStartedEvent",
+                  "artifact.created": "#/components/schemas/ArtifactCreatedEvent",
+                  "budget.exhausted": "#/components/schemas/BudgetExhaustedEvent",
+                  "capability.completed": "#/components/schemas/CapabilityCompletedEvent",
+                  "capability.failed": "#/components/schemas/CapabilityFailedEvent",
+                  "capability.progress": "#/components/schemas/CapabilityProgressEvent",
+                  "capability.retrying": "#/components/schemas/CapabilityRetryingEvent",
+                  "capability.started": "#/components/schemas/CapabilityStartedEvent",
+                  "message.completed": "#/components/schemas/MessageCompletedEvent",
+                  "review.requested": "#/components/schemas/ReviewRequestedEvent",
+                  "review.resolved": "#/components/schemas/ReviewResolvedEvent",
+                  "run.cancel_requested": "#/components/schemas/RunCancelRequestedEvent",
+                  "run.cancelled": "#/components/schemas/RunCancelledEvent",
+                  "run.completed": "#/components/schemas/RunCompletedEvent",
+                  "run.created": "#/components/schemas/RunCreatedEvent",
+                  "run.failed": "#/components/schemas/RunFailedEvent",
+                  "run.interrupted": "#/components/schemas/RunInterruptedEvent",
+                  "run.started": "#/components/schemas/RunStartedEvent",
+                  "runtime.command_completed": "#/components/schemas/RuntimeCommandCompletedEvent",
+                  "runtime.command_started": "#/components/schemas/RuntimeCommandStartedEvent",
+                  "runtime.output": "#/components/schemas/RuntimeOutputEvent",
+                  "skill.load_completed": "#/components/schemas/SkillLoadCompletedEvent",
+                  "skill.load_failed": "#/components/schemas/SkillLoadFailedEvent",
+                  "skill.load_started": "#/components/schemas/SkillLoadStartedEvent",
+                  "task.created": "#/components/schemas/TaskCreatedEvent",
+                  "task.updated": "#/components/schemas/TaskUpdatedEvent"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RunCreatedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/RunStartedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/AgentTurnStartedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/MessageCompletedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/TaskCreatedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/TaskUpdatedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/SkillLoadStartedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/SkillLoadCompletedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/SkillLoadFailedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/CapabilityStartedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/CapabilityCompletedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/CapabilityFailedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/CapabilityRetryingEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/CapabilityProgressEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/RuntimeCommandStartedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/RuntimeOutputEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/RuntimeCommandCompletedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ArtifactCreatedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ReviewRequestedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ReviewResolvedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/BudgetExhaustedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/RunCancelRequestedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/RunInterruptedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/RunCompletedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/RunFailedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/RunCancelledEvent"
+                }
+              ]
+            },
+            "maxItems": 500,
+            "title": "Events",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_sequence": {
+            "pattern": "^(0|[1-9][0-9]{0,18})$",
+            "title": "Next Sequence",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "run_id",
+          "events",
+          "next_sequence",
+          "has_more"
+        ],
+        "title": "EventReplayResponse",
+        "type": "object"
+      },
+      "HealthComponentStatus": {
+        "enum": [
+          "healthy",
+          "unavailable"
+        ],
+        "title": "HealthComponentStatus",
+        "type": "string"
+      },
+      "HealthComponentsRead": {
+        "additionalProperties": false,
+        "properties": {
+          "api": {
+            "$ref": "#/components/schemas/HealthComponentStatus"
+          },
+          "execution_backend": {
+            "$ref": "#/components/schemas/HealthComponentStatus"
+          },
+          "postgres_application": {
+            "$ref": "#/components/schemas/HealthComponentStatus"
+          },
+          "postgres_checkpointer": {
+            "$ref": "#/components/schemas/HealthComponentStatus"
+          }
+        },
+        "required": [
+          "api",
+          "postgres_application",
+          "postgres_checkpointer",
+          "execution_backend"
+        ],
+        "title": "HealthComponentsRead",
+        "type": "object"
+      },
+      "LivenessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "status": {
+            "const": "alive",
+            "default": "alive",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "LivenessResponse",
+        "type": "object"
+      },
+      "MessageCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/MessageCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "message.completed",
+            "default": "message.completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "MessageCompletedEvent",
+        "type": "object"
+      },
+      "MessageCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 20000,
+            "title": "Content",
+            "type": "string"
+          },
+          "content_artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Artifact Id"
+          },
+          "has_tool_calls": {
+            "default": false,
+            "title": "Has Tool Calls",
+            "type": "boolean"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/MessageRole"
+          },
+          "stop_reason": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Reason"
+          },
+          "turn_index": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Index"
+          }
+        },
+        "required": [
+          "message_id",
+          "role",
+          "content"
+        ],
+        "title": "MessageCompletedPayload",
+        "type": "object"
+      },
+      "MessageRole": {
+        "enum": [
+          "user",
+          "assistant",
+          "system",
+          "tool"
+        ],
+        "title": "MessageRole",
+        "type": "string"
+      },
+      "PageInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "has_more"
+        ],
+        "title": "PageInfo",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "components": {
+            "$ref": "#/components/schemas/HealthComponentsRead"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ready",
+          "components"
+        ],
+        "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "ReviewDecision": {
+        "enum": [
+          "approve",
+          "reject"
+        ],
+        "title": "ReviewDecision",
+        "type": "string"
+      },
+      "ReviewDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/ReviewDecision"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "ReviewDecisionRequest",
+        "type": "object"
+      },
+      "ReviewDecisionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "review": {
+            "$ref": "#/components/schemas/ReviewRead"
+          },
+          "run": {
+            "$ref": "#/components/schemas/RunRead"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "review",
+          "run"
+        ],
+        "title": "ReviewDecisionResponse",
+        "type": "object"
+      },
+      "ReviewListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewRead"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "items",
+          "page"
+        ],
+        "title": "ReviewListResponse",
+        "type": "object"
+      },
+      "ReviewRead": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "review_id": {
+            "format": "uuid",
+            "title": "Review Id",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewStatus"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "review_id",
+          "conversation_id",
+          "run_id",
+          "status",
+          "prompt",
+          "requested_at"
+        ],
+        "title": "ReviewRead",
+        "type": "object"
+      },
+      "ReviewRequestedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/ReviewRequestedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "review.requested",
+            "default": "review.requested",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "ReviewRequestedEvent",
+        "type": "object"
+      },
+      "ReviewRequestedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "prompt": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "review_id": {
+            "format": "uuid",
+            "title": "Review Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "pending",
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "review_id",
+          "prompt"
+        ],
+        "title": "ReviewRequestedPayload",
+        "type": "object"
+      },
+      "ReviewResolvedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/ReviewResolvedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "review.resolved",
+            "default": "review.resolved",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "ReviewResolvedEvent",
+        "type": "object"
+      },
+      "ReviewResolvedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "review_id": {
+            "format": "uuid",
+            "title": "Review Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "approved",
+              "rejected",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_id",
+          "status"
+        ],
+        "title": "ReviewResolvedPayload",
+        "type": "object"
+      },
+      "ReviewStatus": {
+        "enum": [
+          "pending",
+          "approved",
+          "rejected",
+          "cancelled"
+        ],
+        "title": "ReviewStatus",
+        "type": "string"
+      },
+      "RunCancelRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "RunCancelRequest",
+        "type": "object"
+      },
+      "RunCancelRequestedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RunCancelRequestedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.cancel_requested",
+            "default": "run.cancel_requested",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunCancelRequestedEvent",
+        "type": "object"
+      },
+      "RunCancelRequestedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "const": "cancelling",
+            "default": "cancelling",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "RunCancelRequestedPayload",
+        "type": "object"
+      },
+      "RunCancelResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "run": {
+            "$ref": "#/components/schemas/RunRead"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run",
+          "accepted"
+        ],
+        "title": "RunCancelResponse",
+        "type": "object"
+      },
+      "RunCancelledEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RunCancelledPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.cancelled",
+            "default": "run.cancelled",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunCancelledEvent",
+        "type": "object"
+      },
+      "RunCancelledPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "const": "cancelled",
+            "default": "cancelled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "RunCancelledPayload",
+        "type": "object"
+      },
+      "RunCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RunCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.completed",
+            "default": "run.completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunCompletedEvent",
+        "type": "object"
+      },
+      "RunCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Artifact Ids",
+            "type": "array"
+          },
+          "final_message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Message Id"
+          },
+          "status": {
+            "const": "completed",
+            "default": "completed",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "RunCompletedPayload",
+        "type": "object"
+      },
+      "RunCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "goal": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Goal",
+            "type": "string"
+          },
+          "input_artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Input Artifact Ids",
+            "type": "array"
+          },
+          "request_key": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Key"
+          }
+        },
+        "required": [
+          "goal"
+        ],
+        "title": "RunCreateRequest",
+        "type": "object"
+      },
+      "RunCreateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/RunRead"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run"
+        ],
+        "title": "RunCreateResponse",
+        "type": "object"
+      },
+      "RunCreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RunCreatedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.created",
+            "default": "run.created",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunCreatedEvent",
+        "type": "object"
+      },
+      "RunCreatedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "pending",
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "RunCreatedPayload",
+        "type": "object"
+      },
+      "RunFailedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RunFailedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.failed",
+            "default": "run.failed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunFailedEvent",
+        "type": "object"
+      },
+      "RunFailedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "error_code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Error Summary",
+            "type": "string"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "status": {
+            "const": "failed",
+            "default": "failed",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error_code",
+          "error_summary"
+        ],
+        "title": "RunFailedPayload",
+        "type": "object"
+      },
+      "RunHistoryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "items": {
+            "description": "当前分页内从最新到最旧的 run。",
+            "items": {
+              "$ref": "#/components/schemas/RunRead"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "order": {
+            "const": "newest_first",
+            "description": "items 按 created_at 降序排列；时间相同时按 run_id 降序排列。分页 cursor 延续相同顺序。",
+            "title": "Order",
+            "type": "string"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "order",
+          "items",
+          "page"
+        ],
+        "title": "RunHistoryResponse",
+        "type": "object"
+      },
+      "RunInterruptedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RunInterruptedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.interrupted",
+            "default": "run.interrupted",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunInterruptedEvent",
+        "type": "object"
+      },
+      "RunInterruptedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "resumable": {
+            "const": true,
+            "default": true,
+            "title": "Resumable",
+            "type": "boolean"
+          },
+          "review_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Id"
+          },
+          "status": {
+            "const": "review_required",
+            "default": "review_required",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RunInterruptedPayload",
+        "type": "object"
+      },
+      "RunRead": {
+        "additionalProperties": false,
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_summary": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Summary"
+          },
+          "last_sequence": {
+            "pattern": "^(0|[1-9][0-9]{0,18})$",
+            "title": "Last Sequence",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "conversation_id",
+          "status",
+          "last_sequence",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RunRead",
+        "type": "object"
+      },
+      "RunResumeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "review_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Id"
+          }
+        },
+        "title": "RunResumeRequest",
+        "type": "object"
+      },
+      "RunResumeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "run": {
+            "$ref": "#/components/schemas/RunRead"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run",
+          "accepted"
+        ],
+        "title": "RunResumeResponse",
+        "type": "object"
+      },
+      "RunStartedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RunStartedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.started",
+            "default": "run.started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RunStartedEvent",
+        "type": "object"
+      },
+      "RunStartedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "running",
+            "default": "running",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "RunStartedPayload",
+        "type": "object"
+      },
+      "RunStatus": {
+        "enum": [
+          "pending",
+          "running",
+          "review_required",
+          "cancelling",
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "title": "RunStatus",
+        "type": "string"
+      },
+      "RuntimeCommandCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RuntimeCommandCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "runtime.command_completed",
+            "default": "runtime.command_completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RuntimeCommandCompletedEvent",
+        "type": "object"
+      },
+      "RuntimeCommandCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "duration_ms": {
+            "maximum": 86400000.0,
+            "minimum": 0.0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "maximum": 255.0,
+                "minimum": -255.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "outcome": {
+            "enum": [
+              "completed",
+              "failed",
+              "timeout",
+              "cancelled"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "redacted": {
+            "default": false,
+            "title": "Redacted",
+            "type": "boolean"
+          },
+          "runtime_command_id": {
+            "format": "uuid",
+            "title": "Runtime Command Id",
+            "type": "string"
+          },
+          "stderr_observed_bytes": {
+            "maximum": 1073741824.0,
+            "minimum": 0.0,
+            "title": "Stderr Observed Bytes",
+            "type": "integer"
+          },
+          "stderr_published_bytes": {
+            "maximum": 1073741824.0,
+            "minimum": 0.0,
+            "title": "Stderr Published Bytes",
+            "type": "integer"
+          },
+          "stderr_truncated": {
+            "default": false,
+            "title": "Stderr Truncated",
+            "type": "boolean"
+          },
+          "stdout_observed_bytes": {
+            "maximum": 1073741824.0,
+            "minimum": 0.0,
+            "title": "Stdout Observed Bytes",
+            "type": "integer"
+          },
+          "stdout_published_bytes": {
+            "maximum": 1073741824.0,
+            "minimum": 0.0,
+            "title": "Stdout Published Bytes",
+            "type": "integer"
+          },
+          "stdout_truncated": {
+            "default": false,
+            "title": "Stdout Truncated",
+            "type": "boolean"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "runtime_command_id",
+          "capability_call_id",
+          "capability_name",
+          "outcome",
+          "duration_ms",
+          "stdout_observed_bytes",
+          "stdout_published_bytes",
+          "stderr_observed_bytes",
+          "stderr_published_bytes"
+        ],
+        "title": "RuntimeCommandCompletedPayload",
+        "type": "object"
+      },
+      "RuntimeCommandStartedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RuntimeCommandStartedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "runtime.command_started",
+            "default": "runtime.command_started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RuntimeCommandStartedEvent",
+        "type": "object"
+      },
+      "RuntimeCommandStartedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "backend": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Backend",
+            "type": "string"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 24000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Command",
+            "type": "array"
+          },
+          "command_truncated": {
+            "default": false,
+            "title": "Command Truncated",
+            "type": "boolean"
+          },
+          "redacted": {
+            "default": false,
+            "title": "Redacted",
+            "type": "boolean"
+          },
+          "runtime_command_id": {
+            "format": "uuid",
+            "title": "Runtime Command Id",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "workdir": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Workdir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtime_command_id",
+          "capability_call_id",
+          "capability_name",
+          "backend",
+          "command",
+          "workdir"
+        ],
+        "title": "RuntimeCommandStartedPayload",
+        "type": "object"
+      },
+      "RuntimeOutputEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/RuntimeOutputPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "runtime.output",
+            "default": "runtime.output",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "RuntimeOutputEvent",
+        "type": "object"
+      },
+      "RuntimeOutputPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "default": 1,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "capability_call_id": {
+            "format": "uuid",
+            "title": "Capability Call Id",
+            "type": "string"
+          },
+          "capability_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Capability Name",
+            "type": "string"
+          },
+          "chunk": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Chunk",
+            "type": "string"
+          },
+          "encoding": {
+            "default": "utf8",
+            "enum": [
+              "utf8",
+              "utf8_replacement"
+            ],
+            "title": "Encoding",
+            "type": "string"
+          },
+          "index": {
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "redacted": {
+            "default": false,
+            "title": "Redacted",
+            "type": "boolean"
+          },
+          "runtime_command_id": {
+            "format": "uuid",
+            "title": "Runtime Command Id",
+            "type": "string"
+          },
+          "stream": {
+            "enum": [
+              "stdout",
+              "stderr"
+            ],
+            "title": "Stream",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "runtime_command_id",
+          "capability_call_id",
+          "capability_name",
+          "stream",
+          "index",
+          "chunk"
+        ],
+        "title": "RuntimeOutputPayload",
+        "type": "object"
+      },
+      "SkillLoadCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/SkillLoadCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "skill.load_completed",
+            "default": "skill.load_completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "SkillLoadCompletedEvent",
+        "type": "object"
+      },
+      "SkillLoadCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "content_bytes": {
+            "maximum": 65536.0,
+            "minimum": 0.0,
+            "title": "Content Bytes",
+            "type": "integer"
+          },
+          "outcome": {
+            "enum": [
+              "loaded",
+              "already_loaded"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "domain_method",
+              "validation_rules",
+              "workflow_guidance",
+              "reference_lookup",
+              "example_lookup"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "resource_kind": {
+            "enum": [
+              "body",
+              "reference",
+              "example"
+            ],
+            "title": "Resource Kind",
+            "type": "string"
+          },
+          "resource_name": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Name"
+          },
+          "skill_load_id": {
+            "format": "uuid",
+            "title": "Skill Load Id",
+            "type": "string"
+          },
+          "skill_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "title": "Skill Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill_load_id",
+          "skill_name",
+          "resource_kind",
+          "purpose",
+          "outcome",
+          "content_bytes"
+        ],
+        "title": "SkillLoadCompletedPayload",
+        "type": "object"
+      },
+      "SkillLoadFailedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/SkillLoadFailedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "skill.load_failed",
+            "default": "skill.load_failed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "SkillLoadFailedEvent",
+        "type": "object"
+      },
+      "SkillLoadFailedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "error_code": {
+            "const": "skill_resource_unavailable",
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_summary": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Error Summary",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "domain_method",
+              "validation_rules",
+              "workflow_guidance",
+              "reference_lookup",
+              "example_lookup"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "resource_kind": {
+            "enum": [
+              "body",
+              "reference",
+              "example"
+            ],
+            "title": "Resource Kind",
+            "type": "string"
+          },
+          "resource_name": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Name"
+          },
+          "skill_load_id": {
+            "format": "uuid",
+            "title": "Skill Load Id",
+            "type": "string"
+          },
+          "skill_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "title": "Skill Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill_load_id",
+          "skill_name",
+          "resource_kind",
+          "purpose",
+          "error_code",
+          "error_summary"
+        ],
+        "title": "SkillLoadFailedPayload",
+        "type": "object"
+      },
+      "SkillLoadStartedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/SkillLoadStartedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "skill.load_started",
+            "default": "skill.load_started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "SkillLoadStartedEvent",
+        "type": "object"
+      },
+      "SkillLoadStartedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "enum": [
+              "domain_method",
+              "validation_rules",
+              "workflow_guidance",
+              "reference_lookup",
+              "example_lookup"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "resource_kind": {
+            "enum": [
+              "body",
+              "reference",
+              "example"
+            ],
+            "title": "Resource Kind",
+            "type": "string"
+          },
+          "resource_name": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Name"
+          },
+          "skill_load_id": {
+            "format": "uuid",
+            "title": "Skill Load Id",
+            "type": "string"
+          },
+          "skill_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "title": "Skill Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill_load_id",
+          "skill_name",
+          "resource_kind",
+          "purpose"
+        ],
+        "title": "SkillLoadStartedPayload",
+        "type": "object"
+      },
+      "TaskCreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/TaskCreatedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "task.created",
+            "default": "task.created",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "TaskCreatedEvent",
+        "type": "object"
+      },
+      "TaskCreatedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "capability_name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capability Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "const": "pending",
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "title"
+        ],
+        "title": "TaskCreatedPayload",
+        "type": "object"
+      },
+      "TaskStatus": {
+        "enum": [
+          "pending",
+          "in_progress",
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "title": "TaskStatus",
+        "type": "string"
+      },
+      "TaskUpdatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/TaskUpdatedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "task.updated",
+            "default": "task.updated",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "TaskUpdatedEvent",
+        "type": "object"
+      },
+      "TaskUpdatedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "status"
+        ],
+        "title": "TaskUpdatedPayload",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "OmniCell-Agent API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/artifacts/{artifact_id}": {
+      "get": {
+        "operationId": "getArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Get Artifact"
+      }
+    },
+    "/api/v1/artifacts/{artifact_id}/content": {
+      "get": {
+        "operationId": "getArtifactContent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "返回经 workspace 边界校验的 artifact 内容。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Get Artifact Content"
+      }
+    },
+    "/api/v1/conversations": {
+      "get": {
+        "operationId": "listConversations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ConversationStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "List Conversations"
+      },
+      "post": {
+        "operationId": "createConversation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Create Conversation"
+      }
+    },
+    "/api/v1/conversations/{conversation_id}": {
+      "get": {
+        "operationId": "getConversation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Get Conversation"
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/artifacts": {
+      "get": {
+        "operationId": "listArtifacts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "List Artifacts"
+      },
+      "post": {
+        "operationId": "uploadArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_uploadArtifact"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "上传内容超过服务端上限。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Upload Artifact"
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/history": {
+      "get": {
+        "operationId": "getConversationHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Get History"
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/reviews": {
+      "get": {
+        "operationId": "listReviews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReviewStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "List Reviews"
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/runs": {
+      "post": {
+        "operationId": "createRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求与当前生命周期状态冲突。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Create Run"
+      }
+    },
+    "/api/v1/health/live": {
+      "get": {
+        "operationId": "getLiveness",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LivenessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Get Liveness"
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "至少一个必要依赖尚未就绪。"
+          }
+        },
+        "summary": "Get Readiness"
+      }
+    },
+    "/api/v1/reviews/{review_id}/decision": {
+      "post": {
+        "operationId": "decideReview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求与当前生命周期状态冲突。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Decide Review"
+      }
+    },
+    "/api/v1/runs/{run_id}": {
+      "get": {
+        "operationId": "getRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Get Run"
+      }
+    },
+    "/api/v1/runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancelRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunCancelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunCancelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Cancel Run"
+      }
+    },
+    "/api/v1/runs/{run_id}/events": {
+      "get": {
+        "operationId": "replayRunEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_sequence",
+            "required": false,
+            "schema": {
+              "default": "0",
+              "pattern": "^(0|[1-9][0-9]{0,18})$",
+              "title": "After Sequence",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventReplayResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Replay Events"
+      }
+    },
+    "/api/v1/runs/{run_id}/events/stream": {
+      "get": {
+        "operationId": "streamRunEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_sequence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(0|[1-9][0-9]{0,18})$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Sequence"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(0|[1-9][0-9]{0,18})$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "example": "id: 1\nevent: run.created\ndata: {...}\n\n"
+              }
+            },
+            "description": "Replay-first run event stream; disconnect does not cancel the run."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Stream Events"
+      }
+    },
+    "/api/v1/runs/{run_id}/resume": {
+      "post": {
+        "operationId": "resumeRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunResumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResumeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求与当前生命周期状态冲突。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Resume Run"
+      }
+    }
+  }
+}

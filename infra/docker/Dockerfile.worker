@@ -1,0 +1,21 @@
+FROM python:3.12-slim
+
+ARG PIP_INDEX_URL=https://pypi.org/simple
+
+# Worker 只提供受控科学计算环境；会话与生命周期由 Local Docker Backend 管理。
+RUN pip install --no-cache-dir \
+    scanpy \
+    pandas \
+    numpy \
+    matplotlib \
+    leidenalg \
+    igraph
+
+ENV HOME=/tmp \
+    MPLCONFIGDIR=/tmp/matplotlib \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN mkdir -p /app/data /tmp/matplotlib && chmod 1777 /tmp /tmp/matplotlib
+
+WORKDIR /app/data

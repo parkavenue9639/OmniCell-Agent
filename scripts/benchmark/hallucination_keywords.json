@@ -1,0 +1,56 @@
+{
+  "PBMC": [
+    "pancreatic acinar",
+    "hepatocyte",
+    "neuron",
+    "oligodendrocyte",
+    "cardiomyocyte",
+    "keratinocyte",
+    "enterocyte",
+    "chondrocyte",
+    "adipocyte"
+  ],
+  "Bone marrow": [
+    "hepatocyte",
+    "neuron",
+    "cardiomyocyte",
+    "pancreatic acinar",
+    "keratinocyte",
+    "enterocyte",
+    "oligodendrocyte"
+  ],
+  "Pancreas": [
+    "neuron",
+    "cardiomyocyte",
+    "hepatocyte",
+    "oligodendrocyte",
+    "skeletal muscle",
+    "keratinocyte",
+    "chondrocyte",
+    "nephron",
+    "podocyte"
+  ],
+  "Lung": [
+    "hepatocyte",
+    "neuron",
+    "cardiomyocyte",
+    "pancreatic acinar",
+    "enterocyte",
+    "podocyte",
+    "nephrocyte",
+    "keratinocyte"
+  ],
+  "Breast (Visium)": [
+    "hepatocyte",
+    "neuron",
+    "cardiomyocyte",
+    "pancreatic acinar",
+    "enterocyte",
+    "oligodendrocyte"
+  ],
+  "Human/Mouse": [
+    "neuron",
+    "cardiomyocyte",
+    "hepatocyte"
+  ]
+}
