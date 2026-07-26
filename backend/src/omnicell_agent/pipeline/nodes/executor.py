@@ -3,15 +3,19 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from pathlib import Path
-from omnicell_agent.schema.state import DataPipeline_State
+from pathlib import Path, PurePosixPath
+from omnicell_agent.schema.state import ExploratoryAnalysisState
 from omnicell_agent.runtime import LocalDockerPythonSession, register_runtime_cancel
 from omnicell_agent.core.config import project_root
+from omnicell_agent.recipes.catalog import (
+    RecipeCatalogError,
+    load_builtin_recipe_catalog,
+)
 
 logger = logging.getLogger(__name__)
 
 _python_session_context: ContextVar[LocalDockerPythonSession | None] = ContextVar(
-    "omnicell_graph_a_python_session", default=None
+    "omnicell_analysis_python_session", default=None
 )
 
 _HOST_DATA_DIR = str(project_root / "data")
@@ -30,11 +34,35 @@ def _to_sandbox_path(path: str) -> str:
     return path
 
 
+def _require_sandbox_file_path(
+    state: ExploratoryAnalysisState,
+    field_name: str,
+) -> str:
+    """Resolve one explicit invocation path and reject absent/escaping state."""
+
+    value = state.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(
+            f"探索性分析缺少权威 {field_name}，未执行 sandbox 代码"
+        )
+    sandbox_path = _to_sandbox_path(value.strip())
+    parsed = PurePosixPath(sandbox_path)
+    if (
+        not sandbox_path.startswith("/app/data/")
+        or ".." in parsed.parts
+        or parsed.name in {"", ".", ".."}
+    ):
+        raise ValueError(
+            f"探索性分析 {field_name} 不在当前 sandbox data 边界内"
+        )
+    return sandbox_path
+
+
 def get_python_session() -> LocalDockerPythonSession:
     session = _python_session_context.get()
     if session is None:
         raise RuntimeError(
-            "Graph A executor 必须运行在显式 graph_a_python_session_scope 生命周期内"
+            "分析执行器必须运行在显式 analysis_python_session_scope 生命周期内"
         )
     return session
 
@@ -55,23 +83,23 @@ def _cleanup_python_session_with_retry(session: LocalDockerPythonSession) -> Non
     except BaseException as retry_failure:
         assert first_failure is not None
         first_failure.add_note(
-            "Graph A Python session cleanup retry failed with "
+            "Analysis Python session cleanup retry failed with "
             f"{type(retry_failure).__name__}"
         )
         raise first_failure
 
 
 @contextmanager
-def graph_a_python_session_scope(
+def analysis_python_session_scope(
     session: LocalDockerPythonSession | None = None,
     *,
     host_workspace: str | Path | None = None,
 ) -> Iterator[LocalDockerPythonSession]:
-    """为一次 Graph A 调用绑定并可靠回收独立 Python session。"""
+    """为一次科学分析调用绑定并可靠回收独立 Python session。"""
 
     if session is None and host_workspace is None:
         raise ValueError(
-            "graph_a_python_session_scope 必须提供 session 或 conversation host_workspace"
+            "analysis_python_session_scope 必须提供 session 或 conversation host_workspace"
         )
     active = session or LocalDockerPythonSession(host_workspace=host_workspace)
     cancel_active = getattr(active, "cancel_active", None)
@@ -95,7 +123,7 @@ def graph_a_python_session_scope(
             _python_session_context.reset(token)
             _cleanup_python_session_with_retry(active)
 
-def run_executor(state: DataPipeline_State) -> dict:
+def run_executor(state: ExploratoryAnalysisState) -> dict:
     """
     Executor Node (Sandbox Node)
     提取 Programmer 刚刚生成的代码，将其推入 Docker Sandbox 环境执行。
@@ -110,23 +138,48 @@ def run_executor(state: DataPipeline_State) -> dict:
     session = get_python_session()
 
     try:
-        raw_data_path = _to_sandbox_path(
-            state.get("raw_data_path", "/app/data/pbmc3k_raw.h5ad")
-        )
-        marker_table_path = _to_sandbox_path(
-            state.get("marker_table_path", "/app/data/markers.json")
+        raw_data_path = _require_sandbox_file_path(state, "raw_data_path")
+        marker_table_path = _require_sandbox_file_path(
+            state,
+            "marker_table_path",
         )
         artifact_output_root = marker_table_path.rsplit("/", 1)[0]
+        plan_steps = state.get("plan_steps", [])
+        current_index = int(state.get("current_step_index", 0) or 0)
+        tool_parameters: dict[str, object] = {}
+        if current_index < len(plan_steps):
+            current_step = plan_steps[current_index]
+            if current_step.get("step_type") == "recipe_call":
+                try:
+                    tool_parameters = load_builtin_recipe_catalog().get(
+                        str(current_step.get("recipe_name") or "")
+                    ).normalize_parameters(
+                        dict(current_step.get("parameters") or {})
+                    )
+                except RecipeCatalogError as exc:
+                    return {
+                        "sandbox_execution_result": {
+                            "status": "error",
+                            "error": (
+                                "Recipe parameters failed validation before "
+                                "sandbox execution."
+                            ),
+                        }
+                    }
         inject_code = (
             f"raw_data_path = {raw_data_path!r}\n"
             f"marker_table_path = {marker_table_path!r}\n"
             f"artifact_output_root = {artifact_output_root!r}\n"
+            f"tool_parameters = {tool_parameters!r}\n"
         )
         session.execute_code(inject_code)
         logger.info(
             "Injected sandbox globals: raw_data_path=%s, marker_table_path=%s, "
-            "artifact_output_root=%s",
-            raw_data_path, marker_table_path, artifact_output_root,
+            "artifact_output_root=%s, tool_parameter_keys=%s",
+            raw_data_path,
+            marker_table_path,
+            artifact_output_root,
+            sorted(tool_parameters),
         )
 
         # 执行前：使用深拷贝生成沙盒内的上下文环境备份，以防止代码执行崩溃导致 adata 被半脏数据污染

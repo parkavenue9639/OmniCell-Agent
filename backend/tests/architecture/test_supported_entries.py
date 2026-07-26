@@ -82,7 +82,7 @@ def test_generic_agent_loop_has_no_domain_capability_imports() -> None:
             "Graph B",
             "ArtifactRef",
             "marker_table",
-            "single_cell_analysis",
-            "deep_cell_annotation",
+            "run_exploratory_analysis",
+            "annotate_cell_clusters",
         )
     )

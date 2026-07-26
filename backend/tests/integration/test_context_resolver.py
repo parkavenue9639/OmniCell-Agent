@@ -183,4 +183,15 @@ def test_resolver_falls_back_when_llm_raises(monkeypatch):
     resolved = out["task_context"]["resolved_context"]
     assert resolved["species"] == "Mouse"
     assert resolved["tissue"] == "Spatial"
-    assert resolved["goal_type"] == "general_annotation"
+    assert resolved["goal_type"] == "unknown"
+
+
+def test_context_profile_and_blank_goal_are_unknown_without_evidence(
+    monkeypatch,
+) -> None:
+    _patch_h5ad_empty(monkeypatch)
+    _patch_llm(monkeypatch, ContextProfile())
+
+    out = run_context_resolver(_base_state("只检查当前数据能否读取"))
+
+    assert out["task_context"]["resolved_context"]["goal_type"] == "unknown"

@@ -26,11 +26,13 @@ from omnicell_agent.capabilities.worker import (
 from omnicell_agent.capabilities.artifacts import ConversationArtifactStore
 from omnicell_agent.capabilities.bootstrap import build_domain_capability_layer
 from omnicell_agent.capabilities.contracts import (
-    DeepCellAnnotationRequest,
-    SingleCellAnalysisRequest,
+    CellAnnotationRequest,
+    ExploratoryAnalysisRequest,
 )
-from omnicell_agent.capabilities.graph_a import SingleCellAnalysisCapability
-from omnicell_agent.capabilities.graph_b import DeepCellAnnotationCapability
+from omnicell_agent.capabilities.cell_annotation import CellAnnotationCapability
+from omnicell_agent.capabilities.exploratory_analysis import (
+    ExploratoryAnalysisCapability,
+)
 from omnicell_agent.capabilities.registry import CapabilityContext, CapabilityRegistry
 from omnicell_agent.runtime import DockerCommandResult
 from omnicell_agent.schema.contract import MarkerGene, MarkerTableContract
@@ -183,7 +185,7 @@ async def test_builtin_worker_round_trip_uses_bounded_json_protocol(tmp_path) ->
     )
 
     result = await invoker.invoke(
-        "inspect_marker_contract",
+        "inspect_marker_table",
         {"marker_table": marker_ref.model_dump(mode="json")},
         cancellation=CancellationToken(),
     )
@@ -220,7 +222,7 @@ async def test_unknown_child_failure_does_not_expose_secret_or_host_path(tmp_pat
 
     with pytest.raises(CapabilityProcessError) as captured:
         await invoker.invoke(
-            "inspect_marker_contract",
+            "inspect_marker_table",
             {"marker_table": marker_ref.model_dump(mode="json")},
             cancellation=CancellationToken(),
         )
@@ -253,7 +255,7 @@ async def test_child_stdout_and_stderr_flood_is_discarded_without_blocking(tmp_p
     )
 
     result = await invoker.invoke(
-        "inspect_marker_contract",
+        "inspect_marker_table",
         {"marker_table": marker_ref.model_dump(mode="json")},
         cancellation=CancellationToken(),
     )
@@ -303,7 +305,7 @@ async def test_child_failure_cannot_bypass_unresolved_runtime_cleanup(
 
     with pytest.raises(RuntimeCleanupError, match="尚未确认"):
         await invoker.invoke(
-            "inspect_marker_contract",
+            "inspect_marker_table",
             {"marker_table": marker_ref.model_dump(mode="json")},
             cancellation=CancellationToken(),
         )
@@ -533,12 +535,14 @@ async def test_runtime_reaper_retries_until_provisional_container_appears(
 
 
 @pytest.mark.asyncio
-async def test_graph_b_process_is_killed_and_partial_scope_is_discarded(tmp_path) -> None:
+async def test_annotation_process_is_killed_and_partial_scope_is_discarded(
+    tmp_path,
+) -> None:
     conversation_id = uuid4()
     store = ConversationArtifactStore(conversation_id, tmp_path / "workspace")
     marker_ref = _marker_ref(store)
     registry = CapabilityRegistry()
-    registry.register(DeepCellAnnotationCapability(graph_factory=lambda: None))
+    registry.register(CellAnnotationCapability(graph_factory=lambda: None))
     fixture_path = Path(__file__).parents[1] / "fixtures"
     inherited_pythonpath = os.environ.get("PYTHONPATH", "")
     child_pythonpath = os.pathsep.join(
@@ -550,7 +554,7 @@ async def test_graph_b_process_is_killed_and_partial_scope_is_discarded(tmp_path
         registry,
         CapabilityContext(conversation_id, store),
         bootstrap_target=(
-            "capability_process_fixture:build_blocking_graph_b_layer"
+            "capability_process_fixture:build_blocking_annotation_layer"
         ),
         child_env={
             "PYTHONPATH": child_pythonpath,
@@ -562,8 +566,8 @@ async def test_graph_b_process_is_killed_and_partial_scope_is_discarded(tmp_path
     token = CancellationToken()
     invocation = asyncio.create_task(
         invoker.invoke(
-            "deep_cell_annotation",
-            DeepCellAnnotationRequest(
+            "annotate_cell_clusters",
+            CellAnnotationRequest(
                 marker_table=marker_ref,
                 species="Human",
                 tissue="PBMC",
@@ -572,7 +576,7 @@ async def test_graph_b_process_is_killed_and_partial_scope_is_discarded(tmp_path
         )
     )
     await _wait_for_file(started)
-    token.cancel("controlled Graph B cancellation")
+    token.cancel("controlled annotation cancellation")
 
     with pytest.raises(RunCancelledError):
         await asyncio.wait_for(invocation, timeout=3)
@@ -585,13 +589,15 @@ async def test_graph_b_process_is_killed_and_partial_scope_is_discarded(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_graph_a_process_is_killed_and_partial_scope_is_discarded(tmp_path) -> None:
+async def test_exploratory_process_is_killed_and_partial_scope_is_discarded(
+    tmp_path,
+) -> None:
     conversation_id = uuid4()
     store = ConversationArtifactStore(conversation_id, tmp_path / "workspace")
     dataset_ref = _dataset_ref(store)
     registry = CapabilityRegistry()
     registry.register(
-        SingleCellAnalysisCapability(
+        ExploratoryAnalysisCapability(
             graph_factory=lambda: None,
             scope_factory=lambda _workspace: None,
         )
@@ -604,7 +610,7 @@ async def test_graph_a_process_is_killed_and_partial_scope_is_discarded(tmp_path
         registry,
         CapabilityContext(conversation_id, store),
         bootstrap_target=(
-            "capability_process_fixture:build_blocking_graph_a_layer"
+            "capability_process_fixture:build_blocking_exploratory_layer"
         ),
         child_env={
             "PYTHONPATH": os.pathsep.join(
@@ -620,8 +626,8 @@ async def test_graph_a_process_is_killed_and_partial_scope_is_discarded(tmp_path
     token = CancellationToken()
     invocation = asyncio.create_task(
         invoker.invoke(
-            "single_cell_analysis",
-            SingleCellAnalysisRequest(
+            "run_exploratory_analysis",
+            ExploratoryAnalysisRequest(
                 dataset=dataset_ref,
                 goal="controlled cancellation",
             ).model_dump(mode="json"),
@@ -629,7 +635,7 @@ async def test_graph_a_process_is_killed_and_partial_scope_is_discarded(tmp_path
         )
     )
     await _wait_for_file(started)
-    token.cancel("controlled Graph A cancellation")
+    token.cancel("controlled exploratory cancellation")
 
     with pytest.raises(RunCancelledError):
         await asyncio.wait_for(invocation, timeout=3)
@@ -642,12 +648,14 @@ async def test_graph_a_process_is_killed_and_partial_scope_is_discarded(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_lease_watchdog_kills_graph_b_without_parent_renewal(tmp_path) -> None:
+async def test_lease_watchdog_kills_annotation_without_parent_renewal(
+    tmp_path,
+) -> None:
     conversation_id = uuid4()
     store = ConversationArtifactStore(conversation_id, tmp_path / "workspace")
     marker_ref = _marker_ref(store)
     registry = CapabilityRegistry()
-    registry.register(DeepCellAnnotationCapability(graph_factory=lambda: None))
+    registry.register(CellAnnotationCapability(graph_factory=lambda: None))
     fixture_path = Path(__file__).parents[1] / "fixtures"
     inherited_pythonpath = os.environ.get("PYTHONPATH", "")
     started = tmp_path / "watchdog-started"
@@ -656,7 +664,7 @@ async def test_lease_watchdog_kills_graph_b_without_parent_renewal(tmp_path) -> 
         registry,
         CapabilityContext(conversation_id, store),
         bootstrap_target=(
-            "capability_process_fixture:build_blocking_graph_b_layer"
+            "capability_process_fixture:build_blocking_annotation_layer"
         ),
         child_env={
             "PYTHONPATH": os.pathsep.join(
@@ -675,8 +683,8 @@ async def test_lease_watchdog_kills_graph_b_without_parent_renewal(tmp_path) -> 
     with pytest.raises(RunCancelledError, match="watchdog"):
         await asyncio.wait_for(
             invoker.invoke(
-                "deep_cell_annotation",
-                DeepCellAnnotationRequest(
+                "annotate_cell_clusters",
+                CellAnnotationRequest(
                     marker_table=marker_ref,
                     species="Human",
                     tissue="PBMC",
@@ -694,16 +702,18 @@ async def test_lease_watchdog_kills_graph_b_without_parent_renewal(tmp_path) -> 
 @pytest.mark.docker
 @pytest.mark.skipif(
     not _RUN_DOCKER,
-    reason="设置 OMNICELL_RUN_DOCKER_TESTS=1 后验证 Graph A worker 的真实容器回收",
+    reason="设置 OMNICELL_RUN_DOCKER_TESTS=1 后验证探索性分析 worker 的真实容器回收",
 )
 @pytest.mark.asyncio
-async def test_graph_a_forced_kill_reaps_exact_owned_docker_container(tmp_path) -> None:
+async def test_exploratory_forced_kill_reaps_exact_owned_docker_container(
+    tmp_path,
+) -> None:
     conversation_id = uuid4()
     store = ConversationArtifactStore(conversation_id, tmp_path / "workspace")
     dataset_ref = _dataset_ref(store)
     registry = CapabilityRegistry()
     registry.register(
-        SingleCellAnalysisCapability(
+        ExploratoryAnalysisCapability(
             graph_factory=lambda: None,
             scope_factory=lambda _workspace: None,
         )
@@ -716,7 +726,7 @@ async def test_graph_a_forced_kill_reaps_exact_owned_docker_container(tmp_path) 
         registry,
         CapabilityContext(conversation_id, store),
         bootstrap_target=(
-            "capability_process_fixture:build_blocking_graph_a_docker_layer"
+            "capability_process_fixture:build_blocking_exploratory_docker_layer"
         ),
         child_env={
             "PYTHONPATH": os.pathsep.join(
@@ -733,8 +743,8 @@ async def test_graph_a_forced_kill_reaps_exact_owned_docker_container(tmp_path) 
     token = CancellationToken()
     invocation = asyncio.create_task(
         invoker.invoke(
-            "single_cell_analysis",
-            SingleCellAnalysisRequest(
+            "run_exploratory_analysis",
+            ExploratoryAnalysisRequest(
                 dataset=dataset_ref,
                 goal="force kill after Docker startup",
             ).model_dump(mode="json"),
@@ -750,7 +760,7 @@ async def test_graph_a_forced_kill_reaps_exact_owned_docker_container(tmp_path) 
     ).strip()
     assert before
 
-    token.cancel("forced Graph A Docker cancellation")
+    token.cancel("forced exploratory Docker cancellation")
     with pytest.raises(RunCancelledError):
         await asyncio.wait_for(invocation, timeout=15)
 

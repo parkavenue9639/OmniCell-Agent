@@ -1,16 +1,39 @@
-"""Agent-facing progressive Skill metadata, separate from Graph A script skills."""
+"""Agent-facing progressive Skill metadata, separate from internal Recipes."""
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 import re
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class SkillCatalogError(ValueError):
     pass
+
+
+class SkillContextLimitError(SkillCatalogError):
+    """The aggregate run-scoped Skill method context exceeds its hard limit."""
+
+
+class SkillResourceRef(BaseModel):
+    """Versioned run-scoped identity for one loaded Skill resource."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    skill_name: str = Field(
+        max_length=128,
+        pattern=r"^[a-z][a-z0-9-]*$",
+    )
+    skill_version: str = Field(
+        max_length=32,
+        pattern=r"^[0-9]+\.[0-9]+$",
+    )
+    resource_kind: Literal["body", "reference", "example"]
+    resource_name: str | None = Field(default=None, max_length=128)
+    resource_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class SkillDefinition(BaseModel):
@@ -108,6 +131,108 @@ class SkillCatalog:
             return skill.load_subdocument("examples", example)
         return skill.load_body()
 
+    def resolve_resource(
+        self,
+        name: str,
+        *,
+        reference: str | None = None,
+        example: str | None = None,
+    ) -> tuple[SkillResourceRef, str]:
+        skill = self.get(name)
+        content = self.load(
+            name,
+            reference=reference,
+            example=example,
+        )
+        kind: Literal["body", "reference", "example"] = (
+            "reference" if reference else "example" if example else "body"
+        )
+        resource_name = reference or example
+        return (
+            SkillResourceRef(
+                skill_name=name,
+                skill_version=skill.version,
+                resource_kind=kind,
+                resource_name=resource_name,
+                resource_sha256=hashlib.sha256(
+                    content.encode("utf-8")
+                ).hexdigest(),
+            ),
+            content,
+        )
+
+    def load_resource(
+        self,
+        resource: Mapping[str, Any] | SkillResourceRef,
+    ) -> tuple[str, str]:
+        """Resolve and verify one versioned run-scoped resource identity."""
+
+        try:
+            identity = SkillResourceRef.model_validate(resource)
+        except Exception as exc:
+            raise SkillCatalogError("skill resource identity 非法") from exc
+        skill = self.get(identity.skill_name)
+        if skill.version != identity.skill_version:
+            raise SkillCatalogError(
+                f"Skill {skill.name} 版本与 checkpoint 不一致"
+            )
+        reference = (
+            identity.resource_name
+            if identity.resource_kind == "reference"
+            else None
+        )
+        example = (
+            identity.resource_name
+            if identity.resource_kind == "example"
+            else None
+        )
+        if identity.resource_kind != "body" and not identity.resource_name:
+            raise SkillCatalogError("skill 子资源缺少名称")
+        if identity.resource_kind == "body" and identity.resource_name:
+            raise SkillCatalogError("skill 正文资源不能携带名称")
+        resolved, content = self.resolve_resource(
+            identity.skill_name,
+            reference=reference,
+            example=example,
+        )
+        if resolved != identity:
+            raise SkillCatalogError(
+                f"Skill {skill.name} 内容哈希与 checkpoint 不一致"
+            )
+        suffix = (
+            f" / {identity.resource_kind} / {identity.resource_name}"
+            if identity.resource_name
+            else " / 正文"
+        )
+        return (
+            f"{identity.skill_name}@{identity.skill_version}{suffix}",
+            content,
+        )
+
+    def render_loaded_context(
+        self,
+        resources: (
+            list[Mapping[str, Any] | SkillResourceRef]
+            | tuple[Mapping[str, Any] | SkillResourceRef, ...]
+        ),
+        *,
+        max_bytes: int = 128 * 1024,
+    ) -> str:
+        """Rebuild the current run's transient method context from resource ids."""
+
+        sections: list[str] = []
+        size = 0
+        for resource in resources:
+            label, content = self.load_resource(resource)
+            section = f"## 已加载方法：{label}\n\n{content.strip()}"
+            size += len(section.encode("utf-8"))
+            if size > max_bytes:
+                raise SkillContextLimitError(
+                    "已加载 Skill 方法上下文超过 128 KiB"
+                )
+            sections.append(section)
+        return "\n\n".join(sections)
+
     @classmethod
     def load_from_directory(cls, path: str | Path) -> "SkillCatalog":
         catalog = cls()
@@ -195,5 +320,6 @@ __all__ = [
     "SkillCatalog",
     "SkillCatalogError",
     "SkillDefinition",
+    "SkillResourceRef",
     "load_builtin_skill_catalog",
 ]

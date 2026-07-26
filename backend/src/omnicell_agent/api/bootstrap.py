@@ -15,6 +15,7 @@ from omnicell_agent.llm.bootstrap import build_factory_from_env
 from omnicell_agent.persistence.bootstrap import PersistenceRuntime
 from omnicell_agent.persistence.config import PostgresSettings
 from omnicell_agent.runs.coordinator import RunCoordinator
+from omnicell_agent.runs.titles import LLMConversationTitleGenerator
 
 from .app import create_app
 from .health import build_readiness_service
@@ -29,9 +30,10 @@ async def api_lifespan(app: FastAPI):
     coordinator: RunCoordinator | None = None
     try:
         capabilities = build_domain_capability_layer()
+        llm_factory = build_factory_from_env()
         agent_factory = AgentLoopFactory(
             capabilities,
-            llm_factory=build_factory_from_env(),
+            llm_factory=llm_factory,
         )
         workspace_root = Path(
             os.environ.get("OMNICELL_WORKSPACE_ROOT", "data/conversations")
@@ -41,6 +43,7 @@ async def api_lifespan(app: FastAPI):
             checkpointer=persistence.checkpoints.get_saver(),
             agent_factory=agent_factory,
             workspace_root=workspace_root,
+            title_generator=LLMConversationTitleGenerator(llm_factory),
         )
         app.state.api_service = ApiService(
             persistence.unit_of_work,

@@ -13,9 +13,13 @@ def test_supported_domain_capability_layer_exposes_graph_workflows() -> None:
 
     layer = build_domain_capability_layer()
 
-    assert [spec.name for spec in layer.registry.specs if spec.kind.value == "workflow"] == [
-        "single_cell_analysis",
-        "deep_cell_annotation",
+    assert [
+        spec.name
+        for spec in layer.registry.specs
+        if spec.mode.value == "composite"
+    ] == [
+        "run_exploratory_analysis",
+        "annotate_cell_clusters",
     ]
 
 

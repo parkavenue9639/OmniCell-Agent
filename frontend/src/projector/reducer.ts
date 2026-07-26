@@ -1,5 +1,6 @@
 import type { PersistedEvent } from "../generated/events-v1";
 import type {
+  AgentToolProjection,
   ArtifactProjection,
   CapabilityProjection,
   ReviewProjection,
@@ -110,29 +111,42 @@ function eventIdentityConflict(
 
 function closeOpenActivities(
   state: RunProjection,
-  status: "failed" | "cancelled",
+  activityStatus: "failed" | "cancelled",
+  taskStatus: "interrupted" | "cancelled",
 ): Pick<
   RunProjection,
-  "runtimeCommands" | "skillLoads" | "capabilities" | "tasks"
+  "runtimeCommands" | "skillLoads" | "capabilities" | "tasks" | "agentTools"
 > {
   return {
+    agentTools: Object.fromEntries(
+      Object.entries(state.agentTools).map(([id, tool]) => [
+        id,
+        tool.status === "running"
+          ? { ...tool, status: activityStatus }
+          : tool,
+      ]),
+    ),
     runtimeCommands: Object.fromEntries(
       Object.entries(state.runtimeCommands).map(([id, runtime]) => [
         id,
-        runtime.status === "running" ? { ...runtime, status } : runtime,
+        runtime.status === "running"
+          ? { ...runtime, status: activityStatus }
+          : runtime,
       ]),
     ),
     skillLoads: Object.fromEntries(
       Object.entries(state.skillLoads).map(([id, skillLoad]) => [
         id,
-        skillLoad.status === "running" ? { ...skillLoad, status } : skillLoad,
+        skillLoad.status === "running"
+          ? { ...skillLoad, status: activityStatus }
+          : skillLoad,
       ]),
     ),
     capabilities: Object.fromEntries(
       Object.entries(state.capabilities).map(([id, capability]) => [
         id,
         capability.status === "running" || capability.status === "retrying"
-          ? { ...capability, status }
+          ? { ...capability, status: activityStatus }
           : capability,
       ]),
     ),
@@ -143,7 +157,7 @@ function closeOpenActivities(
         task.status === "failed" ||
         task.status === "cancelled"
           ? task
-          : { ...task, status },
+          : { ...task, status: taskStatus },
       ]),
     ),
   };
@@ -180,7 +194,7 @@ function reduceKnownEvent(
     case "run.failed":
       return {
         ...state,
-        ...closeOpenActivities(state, "failed"),
+        ...closeOpenActivities(state, "failed", "interrupted"),
         status: event.payload.status ?? "failed",
         terminalStatus: "failed",
         stopReason: event.payload.error_summary,
@@ -188,7 +202,7 @@ function reduceKnownEvent(
     case "run.cancelled":
       return {
         ...state,
-        ...closeOpenActivities(state, "cancelled"),
+        ...closeOpenActivities(state, "cancelled", "cancelled"),
         status: event.payload.status ?? "cancelled",
         terminalStatus: "cancelled",
         stopReason: event.payload.reason ?? null,
@@ -208,6 +222,62 @@ function reduceKnownEvent(
           },
         ],
       };
+    case "agent.tool_started": {
+      const tool: AgentToolProjection = {
+        toolCallId: event.payload.tool_call_id,
+        toolName: event.payload.tool_name,
+        category: event.payload.category,
+        status: "running",
+        summary: null,
+        errorCode: null,
+        recoveryHint: null,
+      };
+      return {
+        ...state,
+        agentTools: {
+          ...state.agentTools,
+          [tool.toolCallId]: tool,
+        },
+      };
+    }
+    case "agent.tool_completed": {
+      const existing = state.agentTools[event.payload.tool_call_id];
+      const tool: AgentToolProjection = {
+        toolCallId: event.payload.tool_call_id,
+        toolName: event.payload.tool_name,
+        category: event.payload.category,
+        status: "completed",
+        summary: event.payload.summary,
+        errorCode: null,
+        recoveryHint: null,
+      };
+      return {
+        ...state,
+        agentTools: {
+          ...state.agentTools,
+          [tool.toolCallId]: { ...existing, ...tool },
+        },
+      };
+    }
+    case "agent.tool_failed": {
+      const existing = state.agentTools[event.payload.tool_call_id];
+      const tool: AgentToolProjection = {
+        toolCallId: event.payload.tool_call_id,
+        toolName: event.payload.tool_name,
+        category: event.payload.category,
+        status: "failed",
+        summary: event.payload.error_summary,
+        errorCode: event.payload.error_code,
+        recoveryHint: event.payload.recovery_hint,
+      };
+      return {
+        ...state,
+        agentTools: {
+          ...state.agentTools,
+          [tool.toolCallId]: { ...existing, ...tool },
+        },
+      };
+    }
     case "task.created": {
       const task: TaskProjection = {
         taskId: event.payload.task_id,
@@ -237,6 +307,8 @@ function reduceKnownEvent(
         skillName: event.payload.skill_name,
         resourceKind: event.payload.resource_kind,
         resourceName: event.payload.resource_name ?? null,
+        skillVersion: event.payload.skill_version ?? null,
+        resourceSha256: event.payload.resource_sha256 ?? null,
         purpose: event.payload.purpose,
         status: "running",
         outcome: null,
@@ -260,6 +332,8 @@ function reduceKnownEvent(
         status: "completed",
         outcome: event.payload.outcome,
         contentBytes: event.payload.content_bytes,
+        skillVersion: event.payload.skill_version,
+        resourceSha256: event.payload.resource_sha256,
         errorCode: null,
         errorSummary: null,
       };
@@ -341,7 +415,12 @@ function reduceKnownEvent(
         capabilityCallId: event.payload.capability_call_id,
         capabilityName: event.payload.capability_name,
         taskId: event.payload.task_id ?? null,
-        status: event.payload.result_status === "aborted" ? "failed" : "completed",
+        status:
+          event.payload.result_status !== null &&
+          event.payload.result_status !== undefined &&
+          event.payload.result_status !== "completed"
+            ? "failed"
+            : "completed",
         attempt: existing?.attempt ?? 1,
         summary: event.payload.summary ?? null,
         errorSummary: null,

@@ -118,6 +118,16 @@ class ConversationArtifactStore:
             pass
         return self._register_canonical(ref)
 
+    def reference_by_id(self, artifact_id: UUID) -> ArtifactRef:
+        """Return a copy of one canonical conversation-owned reference."""
+
+        canonical = self._references.get(artifact_id)
+        if canonical is None:
+            raise ArtifactBoundaryError(
+                "artifact 未在当前 conversation store 登记"
+            )
+        return canonical.model_copy(deep=True)
+
     def sandbox_path(self, ref: ArtifactRef, *, expected_kind: str | None = None) -> str:
         path = self.resolve(ref, expected_kind=expected_kind)
         relative = path.relative_to(self.workspace).as_posix()

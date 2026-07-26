@@ -2,12 +2,12 @@ import logging
 from collections import Counter
 from typing import Any, Dict
 
-from omnicell_agent.schema.state import SubGraphB_State
+from omnicell_agent.schema.state import CellAnnotationState
 
 logger = logging.getLogger(__name__)
 
 
-def consistency_reviewer_node(state: SubGraphB_State) -> Dict[str, Any]:
+def consistency_reviewer_node(state: CellAnnotationState) -> Dict[str, Any]:
     """
     Reducer 后置：跨簇统计 general_type 分布，将独苗少数派在主导谱系占比高时标为 cross_cluster_outlier 并压分。
     不依赖任何组织白名单，仅样本内统计。

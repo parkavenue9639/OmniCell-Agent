@@ -278,7 +278,7 @@ async def test_task_and_review_repositories_bound_all_payloads() -> None:
                 conversation_id=conversation_id,
                 run_id=run_id,
                 tool_call_id="tool-1",
-                capability_name="single_cell_analysis",
+                capability_name="run_exploratory_analysis",
                 status=TaskStatus.PENDING.value,
                 request_payload={"raw": b"forbidden"},
             )
@@ -289,7 +289,7 @@ async def test_task_and_review_repositories_bound_all_payloads() -> None:
             Review(
                 conversation_id=conversation_id,
                 run_id=run_id,
-                capability_name="deep_cell_annotation",
+                capability_name="annotate_cell_clusters",
                 tool_call_id="tool-2",
                 checkpoint_thread_id=f"conversation:{conversation_id}",
                 checkpoint_ns="",

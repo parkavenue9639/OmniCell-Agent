@@ -18,7 +18,16 @@ export type WorkItemState =
   | "review_required"
   | "completed"
   | "failed"
+  | "interrupted"
   | "cancelled";
+
+export type ToolFamily =
+  | "inspect"
+  | "transform"
+  | "analyze"
+  | "annotate"
+  | "visualize"
+  | "custom";
 
 export interface ConversationNavItem {
   id: string;
@@ -53,18 +62,33 @@ export interface TimelineMessageItem {
   occurredAtLabel: string;
 }
 
-export interface TimelineCapabilityItem {
+export type ActivityProcessState =
+  | "completed"
+  | "active"
+  | "pending"
+  | "failed";
+
+export interface TimelineToolItem {
   id: string;
-  kind: "capability";
-  capability: string;
-  family: "graph_a" | "graph_b" | "tool";
+  kind: "tool";
+  toolName: string;
+  family: ToolFamily;
   title: string;
-  description: string;
+  purpose: string;
   state: WorkItemState;
   stateLabel: string;
-  occurredAtLabel: string;
+  attempt: number;
+  durationLabel?: string;
+  process: readonly {
+    label: string;
+    detail?: string;
+    state: ActivityProcessState;
+  }[];
   resultSummary?: string;
-  progressLabel?: string;
+  artifactCount: number;
+  errorCode?: string;
+  recoveryHint?: string;
+  occurredAtLabel: string;
 }
 
 export interface TimelineTaskItem {
@@ -86,6 +110,11 @@ export interface TimelineSkillItem {
   purposeLabel: string;
   state: "running" | "completed" | "failed" | "cancelled";
   stateLabel: string;
+  process: readonly {
+    label: string;
+    detail?: string;
+    state: ActivityProcessState;
+  }[];
   resultSummary?: string;
   occurredAtLabel: string;
 }
@@ -94,7 +123,7 @@ export interface TimelineRuntimeItem {
   id: string;
   kind: "runtime";
   runtimeCommandId: string;
-  capability: string;
+  toolName: string;
   backend: string;
   command: readonly string[];
   code?: string;
@@ -108,6 +137,11 @@ export interface TimelineRuntimeItem {
   stdoutTruncated: boolean;
   stderrTruncated: boolean;
   redacted: boolean;
+  process: readonly {
+    label: string;
+    detail?: string;
+    state: ActivityProcessState;
+  }[];
   occurredAtLabel: string;
 }
 
@@ -149,8 +183,8 @@ export interface TimelineNoticeItem {
 export type TimelineItem =
   | TimelineMessageItem
   | TimelineTaskItem
+  | TimelineToolItem
   | TimelineSkillItem
-  | TimelineCapabilityItem
   | TimelineRuntimeItem
   | TimelineArtifactItem
   | TimelineReviewItem
@@ -158,16 +192,18 @@ export type TimelineItem =
 
 export interface TaskViewModel {
   id: string;
+  runId: string;
   title: string;
   description?: string;
   state: WorkItemState;
   stateLabel: string;
 }
 
-export interface CapabilityViewModel {
+export interface ToolExecutionViewModel {
   id: string;
+  runId: string;
   name: string;
-  family: "graph_a" | "graph_b" | "tool";
+  family: ToolFamily;
   title: string;
   description: string;
   state: WorkItemState;
@@ -177,6 +213,7 @@ export interface CapabilityViewModel {
 
 export interface ReviewViewModel {
   id: string;
+  runId?: string;
   title: string;
   description: string;
   capabilityLabel: string;
@@ -187,6 +224,7 @@ export interface ReviewViewModel {
 
 export interface ArtifactViewModel {
   id: string;
+  runId?: string;
   name: string;
   kindLabel: string;
   sizeLabel: string;
@@ -197,6 +235,7 @@ export interface ArtifactViewModel {
 
 export interface EventViewModel {
   id: string;
+  runId: string;
   sequence: string;
   type: string;
   occurredAtLabel: string;
@@ -227,7 +266,7 @@ export interface ConversationWorkspaceViewModel {
   run?: RunSummaryViewModel;
   timeline: readonly TimelineItem[];
   tasks: readonly TaskViewModel[];
-  capabilities: readonly CapabilityViewModel[];
+  toolExecutions: readonly ToolExecutionViewModel[];
   reviews: readonly ReviewViewModel[];
   artifacts: readonly ArtifactViewModel[];
   events: readonly EventViewModel[];

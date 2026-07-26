@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import BaseModel, Field
 
-from omnicell_agent.schema.state import DataPipeline_State
+from omnicell_agent.schema.state import ExploratoryAnalysisState
 from omnicell_agent import llm
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ class ContextProfile(BaseModel):
     用以替代此前通过 CLI 强制传入的 species / tissue 等参数。
     """
     species: str = Field(
-        default="Human",
+        default="Unknown",
         description="标准物种英文名，如 Human / Mouse。完全无法判断时填 Unknown。",
     )
     tissue: str = Field(
@@ -35,10 +35,11 @@ class ContextProfile(BaseModel):
         description="疾病状态或处理条件的简述；若无法判断则填 Unknown，不得臆造。",
     )
     goal_type: str = Field(
-        default="general_annotation",
+        default="unknown",
         description=(
             "用户目标类型（小写下划线）。示例: immune_profiling / tumor_microenv / "
-            "general_annotation / marker_discovery / spatial_domain_identification。"
+            "general_annotation / marker_discovery / spatial_domain_identification；"
+            "没有明确目标证据时填 unknown。"
         ),
     )
 
@@ -211,16 +212,17 @@ def _structured_extract(user_prompt: str, h5ad_meta: Dict[str, Any], filename_hi
     except Exception as e:
         logger.warning(f"ContextResolver: 结构化抽取失败，回落启发式兜底: {e}")
         return ContextProfile(
-            species=filename_hints.get("species_hint", "Human"),
+            species=filename_hints.get("species_hint", "Unknown"),
             tissue=filename_hints.get("tissue_hint", "Unknown"),
+            goal_type="unknown",
         )
 
 
-def run_context_resolver(state: DataPipeline_State) -> Dict[str, Any]:
+def run_context_resolver(state: ExploratoryAnalysisState) -> Dict[str, Any]:
     """
-    Graph A 首节点：在 Planner 之前从 prompt + h5ad 元数据推断
+    探索性分析首节点：在 Planner 之前从 prompt + h5ad 元数据推断
     species / tissue / disease_state / goal_type，写入 task_context.resolved_context。
-    Graph A capability 将该结果作为结构化上下文返回，后续 Agent 可据此调用 Graph B。
+    分析能力将该结果作为结构化上下文返回，后续 Agent 可据此选择科学能力。
     """
     logger.info("--- NODE: CONTEXT_RESOLVER ---")
     messages = state.get("messages", []) or []
@@ -246,10 +248,10 @@ def run_context_resolver(state: DataPipeline_State) -> Dict[str, Any]:
         elif h5ad_meta.get("obs_tissue_values"):
             tissue_norm = _normalize_tissue(str(h5ad_meta["obs_tissue_values"][0]))
 
-    species_final = (profile.species or "Human").strip() or "Human"
+    species_final = (profile.species or "Unknown").strip() or "Unknown"
     if species_final.lower() == "unknown":
-        species_final = filename_hints.get("species_hint", "Human")
-    if h5ad_meta.get("obs_organism_values") and species_final.lower() in ("", "unknown", "human") :
+        species_final = filename_hints.get("species_hint", "Unknown")
+    if h5ad_meta.get("obs_organism_values") and species_final.lower() in ("", "unknown") :
         first_org = str(h5ad_meta["obs_organism_values"][0]).lower()
         if "mus" in first_org or "mouse" in first_org:
             species_final = "Mouse"
@@ -260,7 +262,7 @@ def run_context_resolver(state: DataPipeline_State) -> Dict[str, Any]:
         "species": species_final,
         "tissue": tissue_norm,
         "disease_state": profile.disease_state or "Unknown",
-        "goal_type": profile.goal_type or "general_annotation",
+        "goal_type": (profile.goal_type or "unknown").strip() or "unknown",
         "sources": {
             "user_prompt_excerpt": (user_prompt[:200] + "...") if len(user_prompt) > 200 else user_prompt,
             "h5ad_metadata": h5ad_meta,

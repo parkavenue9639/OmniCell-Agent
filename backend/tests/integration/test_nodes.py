@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from langchain_core.messages import HumanMessage
 from omnicell_agent.pipeline.nodes.planner import run_planner
 from omnicell_agent.pipeline.nodes.programmer import run_programmer
-from omnicell_agent.schema.state import DataPipeline_State
+from omnicell_agent.schema.state import ExploratoryAnalysisState
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ pytestmark = [
 
 def run_single_test(test_name: str, user_message: str):
     logger.info(f"\n========== 启动测试: {test_name} ==========")
-    mock_state: DataPipeline_State = {
+    mock_state: ExploratoryAnalysisState = {
         "raw_data_path": "/app/data/pbmc3k.h5ad",
         "marker_table_path": "/app/data/markers.csv",
         "messages": [HumanMessage(content=user_message)],

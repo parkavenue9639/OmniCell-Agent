@@ -11,17 +11,25 @@
 
 ## 核心领域不变量
 
-- Graph A 与 Graph B 是必须保留的一等领域能力，不是待删除的遗留实现。
-- Agent Loop 负责通用编排与完成判断，Graph A/B 负责领域工作流，执行环境负责隔离运行；三者职责不得相互侵入。
-- Agent Loop 必须按目标选择最小充分路径：上下文足够时直接回复，局部读取或校验使用 Tool，完整领域目标使用 workflow Skill，只有包含多个相互依赖且可分别验证的步骤时才创建显式计划；不得因为存在数据集就默认运行 Graph A/B，也不得为简单任务形式化建计划。
-- 两者应通过稳定、类型明确的 Skill 与 Tool 边界供 Agent 调用；上层不得依赖工作流内部节点拓扑。
+- 必须保留历史分析与注释流程中已经验证的科学行为，但 Graph A/B 的图名、固定入口、节点名和能力分组不再属于 Agent-facing 或用户可见语义。
+- Agent Loop 负责通用编排与完成判断，领域 Tool 负责明确科学目标，内部引擎负责内聚的执行与反馈循环，执行环境负责隔离运行；各层职责不得相互侵入。
+- Agent Loop 必须按目标选择最小充分路径：稳定、低风险且不依赖领域方法边界的知识可以直接回复；问题命中 Skill 摘要中的领域术语或方法，且答案依赖其操作定义、适用条件、统计假设或证据边界时必须按需加载 Skill，答复篇幅不是跳过加载的理由；局部读取或校验使用检查 Tool，单一科研目标使用对应领域 Tool，只有包含多个相互依赖且可分别验证的步骤时才创建显式计划。加载 Skill 可以只为当前回复提供方法上下文，不自动要求读取数据或执行 Tool；不得因为存在数据集就默认运行完整分析，也不得为简单任务形式化建计划。
+- 顶层 Agent 的统一响应契约只承载跨领域的约束优先级、最小充分表达、证据分层、结构与类比边界，不充当领域知识库；具体方法事实和验证规则由匹配 Skill 渐进提供，Skill 不能覆盖当前用户对语言、篇幅、受众、格式、重点和排除项的明确要求，也不得用输出后机械截断代替生成时取舍。
+- 模型可见语义必须保持单一职责来源：顶层 Agent 管理领域无关的路由、表达与完成约束，Skill 提供可渐进加载的方法知识，Tool 契约声明原子科学目标与前后条件，复合能力内部提示词只处理本能力内的专业决策。内部提示词不得要求隐藏思维链、用夸张角色设定制造权威感、把启发式评分表述为校准概率，或在缺少前置条件时隐式补做计划外分析；未被运行时引用且与当前契约冲突的旧提示资产不得作为并行事实源保留。
+- 每条用户输入创建 Run，但不得自动创建代表整条输入的根 Task；Task 只表示显式计划步骤或实际能力调用。没有未完成显式计划时，非空且无 Tool 调用的 Assistant 文本应自然完成 Run；普通问答和单 Tool 总结不得强制调用 `finish_task`，未完成计划与空回复仍须保留有界 backpressure。
+- 成功的领域 Tool 必须用当前 run 中的真实调用证据自动对账唯一活动计划步骤，不得要求模型猜测内部 Tool call identity；Assistant 文本只有在计划与完成门禁通过后才能发布为公共消息，被拒绝的候选回复不得先进入 frontend。自然完成与 `finish_task` 必须复用同一公共消息资源边界，不能分别维护 URI、宿主路径或控制目录过滤规则。
+- 公开能力必须使用科学目标、输入输出 artifact、前置条件和验证标准命名；上层不得依赖历史工作流或内部节点拓扑。
 - Skill 与 Tool 必须正交注册：Skill 可以引用多个 Tool，同一 Tool 可以被多个 Skill 复用，未被 Skill 引用的独立 Tool 也允许存在；启动期只校验名称、类型契约和 Skill 引用的 Tool 确实已注册，不建立唯一所有权或反向绑定。
-- 初始 Agent 上下文只暴露 Skill 摘要和 Tool 行为提示；Skill 正文、reference 与 example 必须按需渐进加载。每次渐进加载必须形成类型化、可重放的 started/completed/failed 事件，公共事件只暴露 Skill、资源层级、受控用途和结果，不复制正文、宿主路径或模型思维链。每个模型可见 Tool 都必须提供明确的调用与禁用条件，但提示不能替代类型校验、Tool policy、artifact ownership 或执行隔离。
+- 初始 Agent 上下文只暴露 Skill 摘要和 Tool 行为提示；Skill 正文、reference 与 example 必须按需渐进加载，并通过 run-scoped 资源标识重建到当前模型视图，不作为普通 ToolMessage 永久堆叠。只有名称、版本和内容哈希均与当前目录一致的正文 `body` 可以满足 `required_skills` 并解锁对应 Tool；reference/example 必须在同版本正文加载后才能加入方法上下文，且不能单独解锁 Tool。模型可见 Tool view、`load_skill` 与领域 Tool 执行门禁都必须重新验证该身份，包含直接恢复到 pending tools 节点的路径；任何已加载正文或子资源无法按当前目录重建时，本次 Tool 必须在执行或加载前结构化拒绝并从状态中清除失效资源，下一轮才允许重新加载。每次渐进加载必须在写入 checkpoint 和发出 completed 事件前验证聚合上下文边界，并形成类型化、可重放的 started/completed/failed 事件；公共事件只暴露 Skill、资源层级、受控用途和结果，不复制正文、宿主路径或模型思维链。每个模型可见 Tool 都必须提供明确的调用与禁用条件，但提示不能替代类型校验、Tool policy、artifact ownership 或执行隔离。
+- 所有 Agent-visible Tool，包括 Loop 拒绝、控制 Tool、Skill 加载和领域 Tool，必须使用统一的结构化 outcome；失败至少包含稳定 `error_code`、`retryable` 和 `recovery_hint`，三者必须与状态更新后的真实恢复动作一致，不得回退为模型需要猜测语义的纯文本错误。
+- 模型一次返回多个 Tool call 时，必须在写入 checkpoint 前按剩余 Tool 预算做有界规范化；canonical `tool_call_id` 必须非空、有界、属于公共安全字符集且批内唯一，并为每个持久化 ID 生成且只生成一个结构化拒绝结果。不得留下未配对的合法 call、隐藏在 `additional_kwargs` 的原始 call、未清理的 invalid call 或超出预算的计数。同一 run 跨轮复用已有 `tool_call_id` 时，只允许严格幂等重放同名同参的既有结果；名称或参数冲突必须结构化拒绝，已经消费的成功 evidence 只能绑定一个计划步骤。
+- Conversation checkpoint 可以保留跨 run 的消息历史，但每条新持久化 AIMessage 的身份必须包含当前 `run_id`；不得仅以 run-scoped turn 或消息内容生成身份，避免 LangGraph reducer 在连续 run 间误替换消息。
+- Skill 表达方法、选择和验证规则，Tool 表达类型化执行能力，Recipe 只属于 Tool 内部确定性实现；三者不得复用同一名称掩盖不同语义。
 - 能改变科学数据状态的原子 Tool 必须生成新的版本化 ArtifactRef，不得原位覆盖输入，也不得依赖跨 Tool 调用残留的容器局部状态；只有具备明确科学语义、输入前置条件、输出后置条件和代表性验证的能力才能进入公共 Tool 面。
-- 本轮是全新重构，不保留旧模块路径、旧类名、旧函数、旧 CLI、旧 API 或固定 DAG 入口兼容；需要延续的只有 Graph A/B 核心领域能力与经验证的科学行为。
+- 本轮是全新重构，不保留旧模块路径、旧类名、旧函数、旧 CLI、旧 API、历史 DAG 名称或固定入口兼容；需要延续的只有经验证的科学行为。
 - 目录移动、运行环境替换、调用方式变化与科学行为变化必须明确区分，避免在同一项工作中隐式混合。
-- 任何可能改变 Graph A/B 行为、输出、反馈循环、路由或并发语义的变更，都必须明确说明意图，并用代表性基线或契约证据验证。
-- 未经架构决策和显式验证，不得以重构、简化或接入 Agent Loop 为由削弱 Graph A/B 的既有能力。
+- 任何可能改变核心分析或注释行为、输出、反馈循环、路由或并发语义的变更，都必须明确说明意图，并用代表性基线或契约证据验证。
+- 未经架构决策和显式验证，不得以重构、简化、重命名或接入 Agent Loop 为由削弱既有科学能力。
 
 ## 实施顺序与进度证据
 
@@ -33,12 +41,14 @@
 
 ## Monorepo 高层边界
 
-- `backend` 负责权威的 conversation/run 生命周期、Agent 与领域工作流执行、执行环境、模型选择、持久化、artifact 和事件流。
+- `backend` 负责权威的 conversation/run 生命周期、Agent 与领域能力执行、执行环境、模型选择、持久化、artifact 和事件流。
 - `frontend` 负责用户交互与服务端事件的确定性投影；不得从本地 UI 状态推断权威 run 终态，也不得依赖 backend 内部状态结构。
+- Conversation 标题属于 backend 权威 metadata。新建空 conversation 可以由 frontend 显示占位，但首条有效用户目标应通过统一 `summary` LLM alias 生成有界标题，并在 provider 失败或输出非法时使用确定性兜底；自动标题只能替换空值或保留占位，不能覆盖明确标题、反复抖动或阻断 Run。
+- Frontend 主时间线只把 Agent 的执行行为呈现为 Skill 加载、Tool 调用和 Backend 操作；内部 `capability.*` 生命周期必须并入对应 Tool，不能作为第四类“能力”暴露。三类活动卡片都应直接说明动作、过程和结果，不能用无定位价值的内部抽象或泛化翻译替代真实行为。
 - `contracts` 负责 backend 与 frontend 共用的版本化公共契约；契约变化必须同时验证两端兼容性。
 - Frontend 公共 DTO 必须从 `contracts` 单向生成并通过漂移检查，不得另建手写的并行契约或让生成检查直接覆盖工作区。
 - `infra` 负责本地拓扑、运行依赖和环境边界；不得承载产品领域逻辑。
-- 跨层协作应通过稳定契约和资源引用完成，不得泄漏数据库行结构、LangGraph 内部状态、frontend store 或工作流内部节点。
+- 跨层协作应通过稳定契约和资源引用完成，不得泄漏数据库行结构、LangGraph 内部状态、frontend store 或内部引擎节点。
 - 大型科学数据、生成文件和执行输出属于 workspace/artifact 层，不进入控制状态、checkpoint 或事件 payload；checkpoint 写前约束必须覆盖状态、metadata 和中间 writes 的完整 saver 写入面。
 - 应用表与 LangGraph checkpoint 表必须分别由项目 migration 和 saver migration 唯一管理，且使用不同 schema；禁止双重建表、同名 schema 或跨边界修改。
 - 单个 run 的事件顺序必须由数据库原子分配；run 状态和对应事件同应用事务提交，不得把独立连接上的 checkpoint 写入宣称为同一原子事务。
@@ -53,12 +63,12 @@
 - Run、task 与 capability 的公共失败契约只允许暴露稳定 `error_code`、受控摘要和必要关联身份；原始异常、provider 返回、宿主路径、凭据和 capability 子进程任意输出只能进入服务端诊断日志。由可信 Local Docker runtime 独立采集的公开执行转录可以通过类型化事件展示容器逻辑 command、exit code 和有界 stdout/stderr，但必须显式标记 `redacted`、`truncated` 与编码状态，且不得包含宿主绝对路径、环境变量值、凭据或 backend 控制命令。
 - Frontend projector 只有在事件通过版本化 schema、run/conversation identity 与连续 sequence 校验后才能推进持久化游标；gap、identity 冲突和非法事件必须停止当前投影，瞬态事件不得推进游标。
 - Run 终态事件必须是该 run 的最后一个持久化事件；所有公共事件 payload 都必须先通过版本化契约校验，事件 sequence 跨端传输时必须保持无精度损失。
-- Artifact 上传、解析、预览和下载必须经过 conversation ownership 与 workspace 边界校验；下载应从已经校验并固定的文件句柄流式返回，不能在校验后重新按路径打开；公共 API 只暴露稳定引用和有界 metadata，不得暴露 workspace URI 或宿主路径。
+- Artifact 上传、解析、预览和下载必须经过 conversation ownership 与 workspace 边界校验；下载应从已经校验并固定的文件句柄流式返回，不能在校验后重新按路径打开；Agent-facing 参数只传稳定 `artifact_id` 句柄，由 backend 执行适配层恢复并复验权威 ArtifactRef；模型上下文、Tool 结果、最终回复和公共 API 只暴露稳定引用、有界 metadata 与领域摘要，不得暴露 workspace URI 或宿主路径。
 - Capability 输出先进入 invocation-scoped 非权威空间，容器仅能写当前 invocation 并受文件数、单文件和总字节边界约束；只有当前 attempt fence 内的生命周期事务可以登记为权威 artifact，禁止全 workspace 差集或跨 attempt 残片发布。
-- Conversation 对应顶层 checkpoint thread；compiled root graph 使用 LangGraph 根 namespace，嵌套工作流使用框架管理的 namespace，不得把顶层自定义 `checkpoint_ns` 当作能力隔离保证。同一 thread 可承载多个顺序 run，恢复时必须对账 checkpoint state 的 run identity 与 review anchor 后再选择 start、resume 或 continue，不能把旧 run checkpoint 当作当前 run 已启动的证明。
+- Conversation 对应顶层 checkpoint thread；compiled root graph 使用 LangGraph 根 namespace，嵌套复合能力使用框架管理的 namespace，不得把顶层自定义 `checkpoint_ns` 当作能力隔离保证。同一 thread 可承载多个顺序 run，恢复时必须对账 checkpoint state 的 run identity 与 review anchor 后再选择 start、resume 或 continue，不能把旧 run checkpoint 当作当前 run 已启动的证明。
 - Checkpoint retention 只在 run 终态宽限后执行，必须保护最新恢复点及已声明的审核/工作流锚点；孤儿清理只能处理本次 prune 的候选版本，不得对活跃 namespace 做全局扫除。
 - 数据库日志不得输出原始 DSN、用户信息、密码或可能携带凭据的 query 参数。
-- 领域与工作流代码只依赖稳定的 LLM 角色 alias，不得直接选择 provider/model、读取模型凭据或构造供应商客户端；这些职责统一归属于组合根与 LLM Factory。
+- 领域 Tool 与内部引擎代码只依赖稳定的 LLM 角色 alias，不得直接选择 provider/model、读取模型凭据或构造供应商客户端；这些职责统一归属于组合根与 LLM Factory。
 - LLM alias 必须声明其最低能力要求并在启动期完成校验；不得保留或新增绕过统一 Factory 的旧模型构造入口。
 - API 进程启动只校验既有 schema，数据库 migration 必须由显式管理入口执行；本地服务默认仅监听 loopback，扩大访问范围前必须同步补齐鉴权与来源边界。
 - 公共列表 API 的过滤、稳定排序、offset 与 `limit + 1` 必须下推 PostgreSQL；不得先做固定数量截断再在内存分页，嵌套 `run_id` 查询必须校验 conversation 归属。
@@ -77,7 +87,7 @@
 - 每项阶段证据都应可复查，至少记录验证对象、所用方式、结果和仍未覆盖的限制。
 - 最终产品闭环应至少保留一条不 mock HTTP 的浏览器测试，连接真实 React、FastAPI、PostgreSQL、checkpointer 与 SSE；模型和科学 capability 可以使用确定性替身，避免把真实 LLM 波动作为回归门槛。
 - Playwright 默认使用其隔离管理的 Chromium；只有显式验证系统浏览器 channel 时才允许切换到系统 Chrome，避免测试进程污染用户浏览器状态或放大 macOS 沙箱启动故障。
-- Graph A/B 核心能力验证必须区分确定性契约、受控模型替身与真实模型观察；前两者承担可复现门槛，真实模型结果不得成为唯一阻断依据，旧路径或旧符号不属于验证目标。
+- 核心科学行为验证必须区分确定性契约、受控模型替身与真实模型观察；前两者承担可复现门槛，真实模型结果不得成为唯一阻断依据，旧路径或旧符号不属于验证目标。
 - 验证失败时，不得降低标准、跳过前置条件或把部分成功表述为完成；应保留证据并明确阻塞。
 - 尚未落地的目录命令、类名、接口、测试入口或环境假设，不应提前固化为项目规则。
 

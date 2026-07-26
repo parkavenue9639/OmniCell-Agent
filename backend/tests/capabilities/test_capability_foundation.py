@@ -17,15 +17,18 @@ from omnicell_agent.capabilities.bootstrap import (
     build_domain_capability_layer,
     validate_skill_tool_references,
 )
+from omnicell_agent.capabilities.atomic import build_atomic_capabilities
 from omnicell_agent.capabilities.catalog import (
     SkillCatalog,
+    SkillCatalogError,
     SkillDefinition,
     load_builtin_skill_catalog,
 )
 from omnicell_agent.capabilities.contracts import (
     AnalysisStepSummary,
     ArtifactRef,
-    CapabilityKind,
+    CapabilityEffect,
+    CapabilityMode,
     CapabilityRequest,
     CapabilitySpec,
     MarkerClusterSummary,
@@ -35,6 +38,7 @@ from omnicell_agent.capabilities.registry import (
     CapabilityRegistry,
     CapabilityRegistryError,
 )
+from omnicell_agent.recipes.catalog import load_builtin_recipe_catalog
 
 
 def test_conversation_artifact_store_resolves_only_owned_immutable_reference(
@@ -292,38 +296,120 @@ def test_builtin_agent_skills_are_separate_and_reference_registered_names() -> N
     catalog = load_builtin_skill_catalog()
 
     assert [skill.name for skill in catalog.skills] == [
-        "deep-cell-annotation",
-        "single-cell-analysis",
+        "cell-type-annotation",
+        "cluster-and-marker-analysis",
+        "exploratory-analysis",
+        "scientific-visualization",
+        "single-cell-preprocessing",
     ]
-    assert catalog.get("single-cell-analysis").tools == (
-        "inspect_single_cell_context",
-        "run_qc_and_filter",
-        "run_normalize_log",
-        "run_pca_clustering",
-        "extract_marker_genes",
-        "generate_pca_scatter",
-        "single_cell_analysis",
+    assert catalog.get("single-cell-preprocessing").tools == (
+        "inspect_dataset",
+        "quality_control",
+        "normalize_expression",
+        "cluster_cells",
     )
-    assert catalog.get("deep-cell-annotation").tools == (
-        "inspect_marker_contract",
-        "extract_marker_genes",
-        "deep_cell_annotation",
+    assert catalog.get("cell-type-annotation").tools == (
+        "inspect_marker_table",
+        "find_marker_genes",
+        "annotate_cell_clusters",
     )
+    cluster_method = catalog.get("cluster-and-marker-analysis")
+    cluster_body = cluster_method.load_body()
+    assert cluster_method.version == "1.2"
+    assert all(
+        term in cluster_body
+        for term in (
+            "不调用领域 Tool",
+            "邻接图",
+            "UMAP 或 t-SNE 通常用于展示",
+            "因果“驱动基因”",
+            "不能独立证明 cluster 稳健",
+            "marker 不是细胞身份的金标准",
+        )
+    )
+
+
+def test_loaded_skill_resource_identity_detects_version_and_content_drift() -> None:
+    original = SkillCatalog()
+    original.register(
+        SkillDefinition(
+            name="controlled-skill",
+            version="1.0",
+            description="Controlled method.",
+            tools=("inspect_dataset",),
+            content="ORIGINAL_METHOD",
+        )
+    )
+    identity, content = original.resolve_resource("controlled-skill")
+
+    assert content == "ORIGINAL_METHOD"
+    assert identity.skill_version == "1.0"
+    assert original.render_loaded_context(
+        [identity.model_dump(mode="json")]
+    ).endswith("ORIGINAL_METHOD")
+
+    changed_content = SkillCatalog()
+    changed_content.register(
+        SkillDefinition(
+            name="controlled-skill",
+            version="1.0",
+            description="Controlled method.",
+            tools=("inspect_dataset",),
+            content="CHANGED_METHOD",
+        )
+    )
+    with pytest.raises(SkillCatalogError, match="哈希"):
+        changed_content.render_loaded_context(
+            [identity.model_dump(mode="json")]
+        )
+
+    changed_version = SkillCatalog()
+    changed_version.register(
+        SkillDefinition(
+            name="controlled-skill",
+            version="2.0",
+            description="Controlled method.",
+            tools=("inspect_dataset",),
+            content="ORIGINAL_METHOD",
+        )
+    )
+    with pytest.raises(SkillCatalogError, match="版本"):
+        changed_version.render_loaded_context(
+            [identity.model_dump(mode="json")]
+        )
+
+
+def test_atomic_tools_bind_distinct_registered_recipes_with_matching_defaults() -> None:
+    catalog = load_builtin_recipe_catalog()
+    handlers = build_atomic_capabilities(recipe_catalog=catalog)
+
+    for handler in handlers:
+        binding = handler._binding  # noqa: SLF001
+        recipe = handler._recipe  # noqa: SLF001
+        public_defaults = {
+            name: field.default
+            for name, field in handler.request_model.model_fields.items()
+            if name != "dataset"
+        }
+        assert handler.spec.name == binding.tool_name
+        assert handler.spec.name != recipe.recipe_id
+        assert recipe is catalog.get(binding.recipe_id)
+        assert public_defaults == recipe.default_parameters
 
 
 def test_builtin_skill_and_handler_registry_have_closed_bindings() -> None:
     layer = build_domain_capability_layer()
 
     assert [spec.name for spec in layer.registry.specs] == [
-        "inspect_single_cell_context",
-        "run_qc_and_filter",
-        "run_normalize_log",
-        "run_pca_clustering",
-        "extract_marker_genes",
-        "generate_pca_scatter",
-        "single_cell_analysis",
-        "inspect_marker_contract",
-        "deep_cell_annotation",
+        "inspect_dataset",
+        "quality_control",
+        "normalize_expression",
+        "cluster_cells",
+        "find_marker_genes",
+        "plot_pca_clusters",
+        "run_exploratory_analysis",
+        "inspect_marker_table",
+        "annotate_cell_clusters",
     ]
     assert {
         tool
@@ -331,7 +417,7 @@ def test_builtin_skill_and_handler_registry_have_closed_bindings() -> None:
         for tool in skill.tools
     } <= {spec.name for spec in layer.registry.specs}
     assert sum(
-        "extract_marker_genes" in skill.tools
+        "find_marker_genes" in skill.tools
         for skill in layer.skills.skills
     ) == 2
 
@@ -347,7 +433,8 @@ class _EchoResult(BaseModel):
 class _EchoCapability:
     spec = CapabilitySpec(
         name="echo_value",
-        kind=CapabilityKind.ATOMIC,
+        mode=CapabilityMode.ATOMIC,
+        effect=CapabilityEffect.CUSTOM,
         description="测试 capability",
         prompt_hint="仅在测试要求回显数值时调用。",
     )
@@ -362,7 +449,8 @@ class _EchoCapability:
 class _UnreferencedCapability(_EchoCapability):
     spec = CapabilitySpec(
         name="unreferenced_value",
-        kind=CapabilityKind.ATOMIC,
+        mode=CapabilityMode.ATOMIC,
+        effect=CapabilityEffect.CUSTOM,
         description="测试未被 Skill 引用的独立 Tool",
         prompt_hint="仅用于验证 Tool 可以独立于 Skill 注册。",
     )
@@ -433,8 +521,8 @@ def test_capability_context_rejects_mismatched_artifact_scope(tmp_path: Path) ->
             AnalysisStepSummary,
             {
                 "index": 0,
-                "step_type": "x" * 129,
-                "instruction": "ok",
+                "execution_mode": "invalid",
+                "operation_summary": "ok",
                 "status": "completed",
             },
         ),
@@ -442,8 +530,8 @@ def test_capability_context_rejects_mismatched_artifact_scope(tmp_path: Path) ->
             AnalysisStepSummary,
             {
                 "index": 0,
-                "step_type": "skill_call",
-                "instruction": "x" * 2_001,
+                "execution_mode": "deterministic",
+                "operation_summary": "x" * 2_001,
                 "status": "completed",
             },
         ),
@@ -475,7 +563,8 @@ def test_agent_facing_version_metadata_has_hard_bounds() -> None:
     with pytest.raises(ValidationError):
         CapabilitySpec(
             name="bounded_version",
-            kind=CapabilityKind.ATOMIC,
+            mode=CapabilityMode.ATOMIC,
+            effect=CapabilityEffect.CUSTOM,
             description="test",
             version=oversized,
             prompt_hint="test hint",

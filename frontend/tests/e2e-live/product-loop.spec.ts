@@ -49,7 +49,7 @@ test("真实 PostgreSQL/SSE 闭环支持上传、审核恢复、刷新重连与�
   ).toBeVisible();
   await expect(page.getByText("已完成", { exact: true }).last()).toBeVisible();
 
-  await page.getByRole("tab", { name: /产物 2/ }).click();
+  await page.getByRole("tab", { name: /产物 1/ }).click();
   const downloadPromise = page.waitForEvent("download");
   await page
     .getByRole("button", { name: "下载 live-analysis-report.csv" })
@@ -60,6 +60,35 @@ test("真实 PostgreSQL/SSE 闭环支持上传、审核恢复、刷新重连与�
   expect(path).not.toBeNull();
   expect(await import("node:fs/promises").then((fs) => fs.readFile(path!, "utf8")))
     .toBe("cluster,label\n0,T cell\n1,B cell\n");
+
+  await page.getByRole("button", { name: "全部会话" }).click();
+  await expect(page.getByRole("tab", { name: /产物 2/ })).toBeVisible();
+});
+
+test("普通问答以自然文本完成 Run 且不创建 Task 或 capability", async ({
+  page,
+}) => {
+  await createConversation(page);
+  await page
+    .getByRole("textbox", { name: "分析指令" })
+    .fill("为什么单细胞聚类后还需要 marker gene？请简单解释。");
+  await page.getByRole("button", { name: "发送分析指令" }).click();
+
+  await expect(
+    page.getByText(/聚类只把表达模式相近的细胞分成群/),
+  ).toBeVisible();
+  await expect(page.getByText("已完成", { exact: true }).last()).toBeVisible();
+  await expect(page.getByRole("tab", { name: "任务 0" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "能力 0" })).toBeVisible();
+
+  const conversationUrl = page.url();
+  await page.reload();
+  await expect(page).toHaveURL(conversationUrl);
+  await expect(
+    page.getByText(/marker gene 可以揭示各群的特征表达/),
+  ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "任务 0" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "能力 0" })).toBeVisible();
 });
 
 test("真实运行可从 Web 提交取消并在刷新后恢复 cancelled 终态", async ({

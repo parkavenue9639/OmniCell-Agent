@@ -278,6 +278,163 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AgentToolCompletedEvent */
+        AgentToolCompletedEvent: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            payload: components["schemas"]["AgentToolCompletedPayload"];
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Sequence */
+            sequence: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "agent.tool_completed";
+        };
+        /** AgentToolCompletedPayload */
+        AgentToolCompletedPayload: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "control" | "skill" | "domain";
+            /** Summary */
+            summary: string;
+            /** Tool Call Id */
+            tool_call_id: string;
+            /** Tool Name */
+            tool_name: string;
+        };
+        /** AgentToolFailedEvent */
+        AgentToolFailedEvent: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            payload: components["schemas"]["AgentToolFailedPayload"];
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Sequence */
+            sequence: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "agent.tool_failed";
+        };
+        /** AgentToolFailedPayload */
+        AgentToolFailedPayload: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "control" | "skill" | "domain";
+            /** Error Code */
+            error_code: string;
+            /** Error Summary */
+            error_summary: string;
+            /** Recovery Hint */
+            recovery_hint: string;
+            /** Retryable */
+            retryable: boolean;
+            /** Tool Call Id */
+            tool_call_id: string;
+            /** Tool Name */
+            tool_name: string;
+        };
+        /** AgentToolStartedEvent */
+        AgentToolStartedEvent: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            payload: components["schemas"]["AgentToolStartedPayload"];
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Sequence */
+            sequence: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "agent.tool_started";
+        };
+        /** AgentToolStartedPayload */
+        AgentToolStartedPayload: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "control" | "skill" | "domain";
+            /** Tool Call Id */
+            tool_call_id: string;
+            /** Tool Name */
+            tool_name: string;
+        };
         /** AgentTurnStartedEvent */
         AgentTurnStartedEvent: {
             /**
@@ -551,7 +708,7 @@ export interface components {
             /** Capability Name */
             capability_name: string;
             /** Result Status */
-            result_status?: ("completed" | "aborted") | null;
+            result_status?: ("completed" | "aborted" | "skipped") | null;
             /** Summary */
             summary?: string | null;
             /** Task Id */
@@ -889,7 +1046,7 @@ export interface components {
              */
             conversation_id: string;
             /** Events */
-            events: (components["schemas"]["RunCreatedEvent"] | components["schemas"]["RunStartedEvent"] | components["schemas"]["AgentTurnStartedEvent"] | components["schemas"]["MessageCompletedEvent"] | components["schemas"]["TaskCreatedEvent"] | components["schemas"]["TaskUpdatedEvent"] | components["schemas"]["SkillLoadStartedEvent"] | components["schemas"]["SkillLoadCompletedEvent"] | components["schemas"]["SkillLoadFailedEvent"] | components["schemas"]["CapabilityStartedEvent"] | components["schemas"]["CapabilityCompletedEvent"] | components["schemas"]["CapabilityFailedEvent"] | components["schemas"]["CapabilityRetryingEvent"] | components["schemas"]["CapabilityProgressEvent"] | components["schemas"]["RuntimeCommandStartedEvent"] | components["schemas"]["RuntimeOutputEvent"] | components["schemas"]["RuntimeCommandCompletedEvent"] | components["schemas"]["ArtifactCreatedEvent"] | components["schemas"]["ReviewRequestedEvent"] | components["schemas"]["ReviewResolvedEvent"] | components["schemas"]["BudgetExhaustedEvent"] | components["schemas"]["RunCancelRequestedEvent"] | components["schemas"]["RunInterruptedEvent"] | components["schemas"]["RunCompletedEvent"] | components["schemas"]["RunFailedEvent"] | components["schemas"]["RunCancelledEvent"])[];
+            events: (components["schemas"]["RunCreatedEvent"] | components["schemas"]["RunStartedEvent"] | components["schemas"]["AgentTurnStartedEvent"] | components["schemas"]["AgentToolStartedEvent"] | components["schemas"]["AgentToolCompletedEvent"] | components["schemas"]["AgentToolFailedEvent"] | components["schemas"]["MessageCompletedEvent"] | components["schemas"]["TaskCreatedEvent"] | components["schemas"]["TaskUpdatedEvent"] | components["schemas"]["SkillLoadStartedEvent"] | components["schemas"]["SkillLoadCompletedEvent"] | components["schemas"]["SkillLoadFailedEvent"] | components["schemas"]["CapabilityStartedEvent"] | components["schemas"]["CapabilityCompletedEvent"] | components["schemas"]["CapabilityFailedEvent"] | components["schemas"]["CapabilityRetryingEvent"] | components["schemas"]["CapabilityProgressEvent"] | components["schemas"]["RuntimeCommandStartedEvent"] | components["schemas"]["RuntimeOutputEvent"] | components["schemas"]["RuntimeCommandCompletedEvent"] | components["schemas"]["ArtifactCreatedEvent"] | components["schemas"]["ReviewRequestedEvent"] | components["schemas"]["ReviewResolvedEvent"] | components["schemas"]["BudgetExhaustedEvent"] | components["schemas"]["RunCancelRequestedEvent"] | components["schemas"]["RunInterruptedEvent"] | components["schemas"]["RunCompletedEvent"] | components["schemas"]["RunFailedEvent"] | components["schemas"]["RunCancelledEvent"])[];
             /** Has More */
             has_more: boolean;
             /** Next Sequence */
@@ -1988,6 +2145,8 @@ export interface components {
             resource_kind: "body" | "reference" | "example";
             /** Resource Name */
             resource_name?: string | null;
+            /** Resource Sha256 */
+            resource_sha256: string;
             /**
              * Skill Load Id
              * Format: uuid
@@ -1995,6 +2154,8 @@ export interface components {
             skill_load_id: string;
             /** Skill Name */
             skill_name: string;
+            /** Skill Version */
+            skill_version: string;
         };
         /** SkillLoadFailedEvent */
         SkillLoadFailedEvent: {
@@ -2037,9 +2198,9 @@ export interface components {
         SkillLoadFailedPayload: {
             /**
              * Error Code
-             * @constant
+             * @enum {string}
              */
-            error_code: "skill_resource_unavailable";
+            error_code: "skill_resource_unavailable" | "skill_body_required" | "skill_context_limit_exceeded" | "skill_context_stale";
             /** Error Summary */
             error_summary: string;
             /**
@@ -2054,6 +2215,8 @@ export interface components {
             resource_kind: "body" | "reference" | "example";
             /** Resource Name */
             resource_name?: string | null;
+            /** Resource Sha256 */
+            resource_sha256?: string | null;
             /**
              * Skill Load Id
              * Format: uuid
@@ -2061,6 +2224,8 @@ export interface components {
             skill_load_id: string;
             /** Skill Name */
             skill_name: string;
+            /** Skill Version */
+            skill_version?: string | null;
         };
         /** SkillLoadStartedEvent */
         SkillLoadStartedEvent: {
@@ -2113,6 +2278,8 @@ export interface components {
             resource_kind: "body" | "reference" | "example";
             /** Resource Name */
             resource_name?: string | null;
+            /** Resource Sha256 */
+            resource_sha256?: string | null;
             /**
              * Skill Load Id
              * Format: uuid
@@ -2120,6 +2287,8 @@ export interface components {
             skill_load_id: string;
             /** Skill Name */
             skill_name: string;
+            /** Skill Version */
+            skill_version?: string | null;
         };
         /** TaskCreatedEvent */
         TaskCreatedEvent: {

@@ -31,6 +31,35 @@ function modelFor(events: readonly PersistedEvent[]) {
 }
 
 describe("conversation event diagnostics", () => {
+  it("uses a temporary new-conversation label until backend summary arrives", () => {
+    const conversation = {
+      schema_version: 1,
+      conversation_id: conversationId,
+      title: null,
+      status: "active",
+      dataset_artifact_id: null,
+      created_at: "2026-07-25T04:00:00Z",
+      updated_at: "2026-07-25T04:00:00Z",
+    } as const;
+
+    const model = buildConversationViewModel({
+      loading: false,
+      conversations: [conversation],
+      selectedConversation: conversation,
+      artifacts: [],
+      reviews: [],
+      pending: {
+        createConversation: false,
+        uploadDataset: false,
+        submitRun: false,
+        cancelRun: false,
+      },
+    });
+
+    expect(model.title).toBe("新分析对话");
+    expect(model.conversations[0]?.title).toBe("新分析对话");
+  });
+
   it("filters empty tool-call bubbles and keeps bounded diagnostic metadata", () => {
     const events = [
       {
@@ -61,7 +90,7 @@ describe("conversation event diagnostics", () => {
         type: "capability.failed",
         payload: {
           capability_call_id: "66666666-6666-4666-8666-666666666666",
-          capability_name: "deep_cell_annotation",
+          capability_name: "annotate_cell_clusters",
           task_id: "77777777-7777-4777-8777-777777777777",
           attempt: 2,
           error_code: "artifact_identity_mismatch",
@@ -75,18 +104,103 @@ describe("conversation event diagnostics", () => {
     const failed = model.events[1];
 
     expect(model.timeline).toEqual([]);
-    expect(failed.context).toBe("deep_cell_annotation");
+    expect(failed.context).toBe("annotate_cell_clusters");
     expect(failed.tone).toBe("danger");
     expect(Object.fromEntries(failed.metadata.map((item) => [item.label, item.value]))).toMatchObject({
       event_id: "55555555-5555-4555-8555-555555555555",
       run_id: runId,
       capability_call_id: "66666666-6666-4666-8666-666666666666",
-      capability_name: "deep_cell_annotation",
+      capability_name: "annotate_cell_clusters",
       attempt: "2",
       error_code: "artifact_identity_mismatch",
       retryable: "false",
     });
     expect(failed.metadata.some((item) => item.label === "content")).toBe(false);
+  });
+
+  it("将 capability 生命周期呈现为包含过程和结果的 Tool 调用", () => {
+    const capabilityCallId = "66666666-6666-4666-8666-666666666666";
+    const started = {
+      schema_version: 1,
+      event_id: "55555555-5555-4555-8555-555555555551",
+      conversation_id: conversationId,
+      run_id: runId,
+      sequence: "1",
+      occurred_at: "2026-07-24T07:12:09.084Z",
+      type: "capability.started",
+      payload: {
+        capability_call_id: capabilityCallId,
+        capability_name: "inspect_dataset",
+        task_id: null,
+        attempt: 1,
+      },
+    } as const satisfies PersistedEvent;
+    const completed = {
+      schema_version: 1,
+      event_id: "55555555-5555-4555-8555-555555555552",
+      conversation_id: conversationId,
+      run_id: runId,
+      sequence: "2",
+      occurred_at: "2026-07-24T07:12:13.982Z",
+      type: "capability.completed",
+      payload: {
+        capability_call_id: capabilityCallId,
+        capability_name: "inspect_dataset",
+        task_id: null,
+        attempt: 1,
+        result_status: null,
+        artifact_ids: [],
+        summary: "能力调用已返回",
+      },
+    } as const satisfies PersistedEvent;
+    const projection: RunProjection = {
+      ...emptyRunProjection(runId, conversationId),
+      appliedSequence: "2",
+      events: [started, completed],
+      capabilities: {
+        [capabilityCallId]: {
+          capabilityCallId,
+          capabilityName: "inspect_dataset",
+          taskId: null,
+          status: "completed",
+          attempt: 1,
+          summary: "能力调用已返回",
+          errorSummary: null,
+          artifactIds: [],
+          progressCurrent: null,
+          progressTotal: null,
+          progressMessage: null,
+        },
+      },
+    };
+
+    const model = buildConversationViewModel({
+      loading: false,
+      conversations: [],
+      artifacts: [],
+      reviews: [],
+      projection,
+      pending: {
+        createConversation: false,
+        uploadDataset: false,
+        submitRun: false,
+        cancelRun: false,
+      },
+    });
+
+    expect(model.timeline).toHaveLength(1);
+    expect(model.timeline[0]).toMatchObject({
+      kind: "tool",
+      toolName: "inspect_dataset",
+      title: "检查当前数据集",
+      stateLabel: "调用完成",
+      durationLabel: "4.90 s",
+      resultSummary: "检查当前数据集已完成",
+      process: [
+        { label: "发起 Tool 调用", state: "completed" },
+        { label: "Tool 返回结果", state: "completed" },
+      ],
+    });
   });
 
   it("merges historical run timelines and renders the latest runtime state", () => {
@@ -138,7 +252,7 @@ describe("conversation event diagnostics", () => {
       payload: {
         runtime_command_id: runtimeId,
         capability_call_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-        capability_name: "run_pca_clustering",
+        capability_name: "cluster_cells",
         task_id: null,
         attempt: 1,
         backend: "local-docker-cli",
@@ -164,6 +278,8 @@ describe("conversation event diagnostics", () => {
           skillName: "pca-clustering",
           resourceKind: "body",
           resourceName: null,
+          skillVersion: null,
+          resourceSha256: null,
           purpose: "domain_method",
           status: "completed",
           outcome: "loaded",
@@ -221,7 +337,7 @@ describe("conversation event diagnostics", () => {
       resultSummary: "已加载 2.0 KiB 方法上下文",
     });
     expect(model.timeline[2]).toMatchObject({
-      capability: "run_pca_clustering",
+      toolName: "cluster_cells",
       stdout: "done\n",
       exitCode: 0,
     });

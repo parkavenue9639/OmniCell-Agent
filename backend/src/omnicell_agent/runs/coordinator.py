@@ -31,7 +31,10 @@ from omnicell_agent.capabilities.artifacts import (
     ConversationArtifactStore,
 )
 from omnicell_agent.capabilities.contracts import ArtifactRef
-from omnicell_agent.capabilities.errors import PUBLIC_CAPABILITY_FAILURE_SUMMARY
+from omnicell_agent.capabilities.errors import (
+    PUBLIC_CAPABILITY_FAILURE_SUMMARY,
+    PUBLIC_CAPABILITY_NOT_COMPLETED_SUMMARY,
+)
 from omnicell_agent.capabilities.registry import CapabilityContext
 from omnicell_agent.persistence.database import await_cancellation_safe
 from omnicell_agent.persistence.models import (
@@ -46,6 +49,9 @@ from omnicell_agent.persistence.unit_of_work import UnitOfWork
 
 from .event_log import RunEventLog, UnitOfWorkFactory
 from .events import (
+    AgentToolCompletedPayload,
+    AgentToolFailedPayload,
+    AgentToolStartedPayload,
     AgentTurnStartedPayload,
     ArtifactCreatedPayload,
     BudgetExhaustedPayload,
@@ -78,6 +84,13 @@ from .events import (
     TaskUpdatedPayload,
 )
 from .status import ReviewDecision, ReviewStatus, RunStatus, TaskStatus, is_terminal_run_status
+from .titles import (
+    ConversationTitleGenerator,
+    DeterministicConversationTitleGenerator,
+    fallback_conversation_title,
+    is_auto_title_placeholder,
+    sanitize_conversation_title,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -88,6 +101,70 @@ _TASK_NAMESPACE = UUID("060a1126-1b14-4df8-b732-22f40848bcb9")
 _MESSAGE_NAMESPACE = UUID("56b099a2-4bb5-4fe4-b6b5-acdb514a33e1")
 _PUBLIC_RUN_EXECUTION_FAILURE = "运行执行失败；详细诊断仅保留在服务端日志。"
 _PUBLIC_RUN_HEARTBEAT_FAILURE = "运行心跳失败；详细诊断仅保留在服务端日志。"
+
+
+def _public_result_text(value: object, *, fallback: str = "Unknown") -> str:
+    text = " ".join(str(value or fallback).split())
+    return (text or fallback)[:200]
+
+
+def _public_tool_completion_summary(
+    name: str,
+    raw_result: object,
+    refs: tuple[ArtifactRef, ...],
+) -> str:
+    """Build a bounded, result-oriented Tool summary for replayable events."""
+
+    if isinstance(raw_result, Mapping):
+        context = raw_result.get("context")
+        if name == "inspect_dataset" and isinstance(context, Mapping):
+            return (
+                "数据集信息：物种 "
+                f"{_public_result_text(context.get('species'))}；组织 "
+                f"{_public_result_text(context.get('tissue'))}；疾病状态 "
+                f"{_public_result_text(context.get('disease_state'))}；"
+                "任务类型 "
+                f"{_public_result_text(context.get('goal_type'))}"
+            )
+        if name == "inspect_marker_table":
+            marker_count = int(raw_result.get("marker_count") or 0)
+            cluster_count = int(raw_result.get("cluster_count") or 0)
+            truncated = bool(raw_result.get("truncated", False))
+            return (
+                f"Marker table：{cluster_count} 个 cluster，"
+                f"{marker_count} 个 marker"
+                + ("；当前只展示有界摘要" if truncated else "")
+            )
+        if (
+            name == "annotate_cell_clusters"
+            and raw_result.get("cluster_count") is not None
+            and raw_result.get("manual_review_count") is not None
+        ):
+            return (
+                f"细胞注释完成：{int(raw_result['cluster_count'])} 个 cluster，"
+                f"{int(raw_result['manual_review_count'])} 个需要人工复核；"
+                f"生成 {len(refs)} 个 Artifact"
+            )
+        metrics = raw_result.get("metrics")
+        if isinstance(metrics, Mapping):
+            facts: list[str] = []
+            if metrics.get("n_obs_after") is not None:
+                facts.append(f"{int(metrics['n_obs_after'])} cells")
+            if metrics.get("n_vars_after") is not None:
+                facts.append(f"{int(metrics['n_vars_after'])} genes")
+            if metrics.get("cluster_count") is not None:
+                facts.append(f"{int(metrics['cluster_count'])} clusters")
+            if metrics.get("marker_count") is not None:
+                facts.append(f"{int(metrics['marker_count'])} markers")
+            fact_summary = "，".join(facts[:4])
+            artifact_summary = (
+                f"；生成 {len(refs)} 个 Artifact" if refs else ""
+            )
+            if fact_summary:
+                return f"{name} 完成：{fact_summary}{artifact_summary}"
+    if refs:
+        return f"{name} 完成；生成 {len(refs)} 个 Artifact"
+    return f"{name} 已完成"
 
 
 class RunCoordinatorError(RuntimeError):
@@ -134,10 +211,6 @@ def _safe_upload_filename(value: str | None) -> str:
     leaf = (value or "upload.bin").replace("\\", "/").rsplit("/", 1)[-1].strip()
     leaf = "".join(character for character in leaf if ord(character) >= 32 and character != "\x7f")
     return (leaf or "upload.bin")[:255]
-
-
-def root_task_id(run_id: UUID) -> UUID:
-    return uuid5(_TASK_NAMESPACE, f"{run_id}:root")
 
 
 def capability_call_id(run_id: UUID, tool_call_id: str) -> UUID:
@@ -333,6 +406,31 @@ class RunLifecycleObserver(AgentObserver):
                 turn_index=turn,
                 remaining_turns=max(self._max_turns - turn, 0),
             )
+        elif event_type in {
+            EventType.AGENT_TOOL_STARTED,
+            EventType.AGENT_TOOL_COMPLETED,
+            EventType.AGENT_TOOL_FAILED,
+        }:
+            common = {
+                "tool_call_id": str(payload["tool_call_id"])[:255],
+                "tool_name": str(payload["tool_name"]),
+                "category": str(payload["category"]),
+            }
+            if event_type is EventType.AGENT_TOOL_STARTED:
+                result = AgentToolStartedPayload(**common)
+            elif event_type is EventType.AGENT_TOOL_COMPLETED:
+                result = AgentToolCompletedPayload(
+                    **common,
+                    summary=str(payload["summary"])[:2_000],
+                )
+            else:
+                result = AgentToolFailedPayload(
+                    **common,
+                    error_code=str(payload["error_code"])[:128],
+                    error_summary=str(payload["error_summary"])[:2_000],
+                    retryable=bool(payload["retryable"]),
+                    recovery_hint=str(payload["recovery_hint"])[:2_000],
+                )
         elif event_type is EventType.MESSAGE_COMPLETED:
             result = MessageCompletedPayload(
                 message_id=uuid5(_MESSAGE_NAMESPACE, f"{self.run_id}:{dedupe_key}"),
@@ -380,19 +478,57 @@ class RunLifecycleObserver(AgentObserver):
                 ),
                 "purpose": str(payload["purpose"]),
             }
+            optional_identity = {
+                "skill_version": (
+                    str(payload["skill_version"])
+                    if payload.get("skill_version") is not None
+                    else None
+                ),
+                "resource_sha256": (
+                    str(payload["resource_sha256"])
+                    if payload.get("resource_sha256") is not None
+                    else None
+                ),
+            }
             if event_type is EventType.SKILL_LOAD_STARTED:
-                result = SkillLoadStartedPayload(**common)
+                result = SkillLoadStartedPayload(
+                    **common,
+                    **optional_identity,
+                )
             elif event_type is EventType.SKILL_LOAD_COMPLETED:
                 result = SkillLoadCompletedPayload(
                     **common,
+                    skill_version=str(payload["skill_version"]),
+                    resource_sha256=str(payload["resource_sha256"]),
                     outcome=str(payload["outcome"]),
                     content_bytes=int(payload.get("content_bytes", 0)),
                 )
             else:
+                error_code = str(
+                    payload.get("error_code")
+                    or "skill_resource_unavailable"
+                )
                 result = SkillLoadFailedPayload(
                     **common,
-                    error_code="skill_resource_unavailable",
-                    error_summary="Skill 资源未能加载；请检查名称或改用其他能力。",
+                    **optional_identity,
+                    error_code=error_code,
+                    error_summary=(
+                        "加载 Skill 子资源前必须先加载同版本正文。"
+                        if error_code == "skill_body_required"
+                        else (
+                            "加载该资源会超过本次 run 的 Skill 方法上下文上限。"
+                            if error_code == "skill_context_limit_exceeded"
+                            else (
+                                "已清理失效的 Skill 方法上下文；"
+                                "可以重新加载当前 Skill。"
+                                if error_code == "skill_context_stale"
+                                else (
+                                    "Skill 资源未能加载；"
+                                    "请检查名称或改用其他能力。"
+                                )
+                            )
+                        )
+                    ),
                 )
         elif event_type in {
             EventType.CAPABILITY_STARTED,
@@ -422,7 +558,14 @@ class RunLifecycleObserver(AgentObserver):
                     else None
                 )
                 result_status = (
-                    raw_status if raw_status in {"completed", "aborted"} else None
+                    raw_status
+                    if raw_status in {"completed", "aborted", "skipped"}
+                    else None
+                )
+                completion_summary = _public_tool_completion_summary(
+                    name,
+                    raw_result,
+                    refs,
                 )
                 result = CapabilityCompletedPayload(
                     capability_call_id=call_id,
@@ -432,9 +575,13 @@ class RunLifecycleObserver(AgentObserver):
                     result_status=result_status,
                     artifact_ids=[ref.artifact_id for ref in refs],
                     summary=(
-                        "工作流已完成"
+                        completion_summary
                         if result_status == "completed"
-                        else "能力调用已返回"
+                        else (
+                            PUBLIC_CAPABILITY_NOT_COMPLETED_SUMMARY
+                            if result_status in {"aborted", "skipped"}
+                            else completion_summary
+                        )
                     ),
                 )
             elif event_type is EventType.CAPABILITY_FAILED:
@@ -446,8 +593,16 @@ class RunLifecycleObserver(AgentObserver):
                     capability_name=name,
                     task_id=task_id,
                     attempt=int(payload.get("attempt", 1)),
-                    error_code="capability_execution_failed",
-                    error_summary=PUBLIC_CAPABILITY_FAILURE_SUMMARY,
+                    error_code=str(
+                        payload.get("error_code")
+                        or "capability_internal_error"
+                    )[:128],
+                    error_summary=(
+                        "输入不满足该能力的类型或科学前置条件。"
+                        if payload.get("error_code")
+                        == "capability_input_invalid"
+                        else PUBLIC_CAPABILITY_FAILURE_SUMMARY
+                    ),
                     retryable=bool(payload.get("retryable", False)),
                 )
             elif event_type is EventType.CAPABILITY_RETRYING:
@@ -559,11 +714,7 @@ class RunLifecycleObserver(AgentObserver):
         elif event_type is EventType.TASK_UPDATED:
             status = TaskStatus(str(payload["status"]))
             result = TaskUpdatedPayload(
-                task_id=(
-                    UUID(str(payload["task_id"]))
-                    if payload.get("task_id") is not None
-                    else root_task_id(self.run_id)
-                ),
+                task_id=UUID(str(payload["task_id"])),
                 status=status,
                 summary=(
                     str(payload["summary"])[:2_000]
@@ -654,18 +805,27 @@ class RunLifecycleObserver(AgentObserver):
                 task.status = TaskStatus.IN_PROGRESS.value
                 task.started_at = task.started_at or now
             if event_type is EventType.CAPABILITY_COMPLETED:
-                task.status = TaskStatus.COMPLETED.value
+                raw_result = payload.get("result")
+                raw_status = (
+                    str(raw_result.get("status"))
+                    if isinstance(raw_result, Mapping)
+                    and raw_result.get("status") is not None
+                    else None
+                )
+                if raw_status in {"aborted", "skipped"}:
+                    task.status = TaskStatus.FAILED.value
+                    task.error_summary = (
+                        PUBLIC_CAPABILITY_NOT_COMPLETED_SUMMARY
+                    )
+                else:
+                    task.status = TaskStatus.COMPLETED.value
                 task.finished_at = now
             elif event_type is EventType.CAPABILITY_FAILED:
                 task.status = TaskStatus.FAILED.value
                 task.error_summary = PUBLIC_CAPABILITY_FAILURE_SUMMARY
                 task.finished_at = now
         elif event_type is EventType.TASK_UPDATED:
-            task_id = (
-                UUID(str(payload["task_id"]))
-                if payload.get("task_id") is not None
-                else root_task_id(self.run_id)
-            )
+            task_id = UUID(str(payload["task_id"]))
             task = await repositories.tasks.get(
                 task_id,
                 conversation_id=self.conversation_id,
@@ -698,6 +858,7 @@ class RunCoordinator:
         agent_factory: AgentLoopFactory,
         workspace_root: str | Path,
         event_log: RunEventLog | None = None,
+        title_generator: ConversationTitleGenerator | None = None,
         worker_id: str | None = None,
         lease_duration: timedelta = timedelta(minutes=2),
         clock: Any | None = None,
@@ -710,6 +871,9 @@ class RunCoordinator:
         self._workspace_root = Path(workspace_root).expanduser().resolve(strict=False)
         self._workspace_root.mkdir(parents=True, exist_ok=True)
         self.event_log = event_log or RunEventLog(unit_of_work)
+        self._title_generator = (
+            title_generator or DeterministicConversationTitleGenerator()
+        )
         self.worker_id = (worker_id or f"local-{os.getpid()}-{uuid4().hex[:12]}")[:255]
         self._lease_duration = lease_duration
         self._clock = clock or (lambda: datetime.now(UTC))
@@ -865,8 +1029,11 @@ class RunCoordinator:
         if len(set(normalized_artifact_ids)) != len(normalized_artifact_ids):
             raise ValueError("input artifacts 不允许重复")
         normalized_key = request_key.strip() if request_key else None
+        suggested_title = await self._suggest_initial_title(
+            conversation_id,
+            normalized_goal,
+        )
         run_id = uuid4()
-        task_id = root_task_id(run_id)
         created = False
         try:
             async with self._unit_of_work() as unit_of_work:
@@ -875,6 +1042,8 @@ class RunCoordinator:
                 conversation = await repositories.conversations.get(conversation_id)
                 if conversation is None:
                     raise ConversationNotFoundError(str(conversation_id))
+                if suggested_title and is_auto_title_placeholder(conversation.title):
+                    conversation.title = suggested_title
                 if normalized_key:
                     existing = await repositories.runs.get_by_request_key(
                         conversation_id=conversation_id,
@@ -919,17 +1088,6 @@ class RunCoordinator:
                         checkpoint_thread_id=f"conversation:{conversation_id}",
                     )
                 )
-                await repositories.tasks.add(
-                    RunTask(
-                        id=task_id,
-                        conversation_id=conversation_id,
-                        run_id=run_id,
-                        tool_call_id=f"agent-goal:{run_id}",
-                        capability_name="agent_goal",
-                        status=TaskStatus.PENDING.value,
-                        request_payload={"goal": normalized_goal},
-                    )
-                )
                 await repositories.events.append(
                     event_id=lifecycle_event_id(run_id, "run:created"),
                     run_id=run_id,
@@ -944,17 +1102,6 @@ class RunCoordinator:
                         message_id=uuid5(_MESSAGE_NAMESPACE, f"{run_id}:user"),
                         role=MessageRole.USER,
                         content=normalized_goal,
-                    ).model_dump(mode="json"),
-                )
-                await repositories.events.append(
-                    event_id=lifecycle_event_id(run_id, "task:root:created"),
-                    run_id=run_id,
-                    event_type=EventType.TASK_CREATED.value,
-                    payload=TaskCreatedPayload(
-                        task_id=task_id,
-                        title=normalized_goal[:300],
-                        description=normalized_goal[:2_000],
-                        capability_name="agent_goal",
                     ).model_dump(mode="json"),
                 )
                 created = True
@@ -984,6 +1131,34 @@ class RunCoordinator:
             await self.event_log.notifier.notify(run_id)
             self._schedule(run_id, self._execute_start(run_id))
         return run
+
+    async def _suggest_initial_title(
+        self,
+        conversation_id: UUID,
+        goal: str,
+    ) -> str | None:
+        async with self._unit_of_work() as unit_of_work:
+            repositories = unit_of_work.repositories
+            assert repositories is not None
+            conversation = await repositories.conversations.get(conversation_id)
+        if conversation is None:
+            raise ConversationNotFoundError(str(conversation_id))
+        if not is_auto_title_placeholder(conversation.title):
+            return None
+        try:
+            generated = await self._title_generator.generate(goal)
+            title = (
+                sanitize_conversation_title(generated)
+                if isinstance(generated, str)
+                else ""
+            )
+        except Exception:
+            logger.warning(
+                "conversation title generator raised; using deterministic fallback",
+                exc_info=True,
+            )
+            title = ""
+        return title or fallback_conversation_title(goal)
 
     async def request_cancel(self, run_id: UUID, *, reason: str | None = None) -> bool:
         normalized_reason = reason.strip()[:2_000] if reason and reason.strip() else None
@@ -2046,7 +2221,6 @@ class RunCoordinator:
                     conversation_id=run.conversation_id,
                     limit=500,
                 )
-                await self._set_root_task(repositories, run, TaskStatus.COMPLETED)
                 await repositories.events.append(
                     event_id=lifecycle_event_id(run_id, "run:completed"),
                     run_id=run_id,
@@ -2092,7 +2266,6 @@ class RunCoordinator:
             if run.status == RunStatus.CANCELLING.value:
                 cancelled_won = True
             else:
-                await self._set_root_task(repositories, run, TaskStatus.FAILED, summary)
                 await repositories.events.append(
                     event_id=lifecycle_event_id(run_id, "run:failed"),
                     run_id=run_id,
@@ -2166,7 +2339,6 @@ class RunCoordinator:
                     payload=RunCancelRequestedPayload(reason=reason).model_dump(mode="json"),
                     run_status=RunStatus.CANCELLING,
                 )
-            await self._set_root_task(repositories, run, TaskStatus.CANCELLED, reason)
             await repositories.events.append(
                 event_id=lifecycle_event_id(run_id, "run:cancelled"),
                 run_id=run_id,
@@ -2177,38 +2349,6 @@ class RunCoordinator:
             run.worker_id = None
             run.lease_expires_at = None
         await self.event_log.notifier.notify(run_id)
-
-    async def _set_root_task(
-        self,
-        repositories: Any,
-        run: Run,
-        status: TaskStatus,
-        summary: str | None = None,
-    ) -> None:
-        task = await repositories.tasks.get(
-            root_task_id(run.id),
-            conversation_id=run.conversation_id,
-            run_id=run.id,
-        )
-        already_applied = task is not None and task.status == status.value
-        if task is not None:
-            task.status = status.value
-            task.finished_at = self._clock()
-            if status is TaskStatus.FAILED:
-                task.error_summary = summary[:2_000] if summary else None
-        if already_applied:
-            return
-        await repositories.events.append(
-            event_id=lifecycle_event_id(run.id, f"task:root:{status.value}"),
-            run_id=run.id,
-            event_type=EventType.TASK_UPDATED.value,
-            payload=TaskUpdatedPayload(
-                task_id=root_task_id(run.id),
-                status=status,
-                summary=summary[:2_000] if summary else None,
-            ).model_dump(mode="json"),
-        )
-
 
 __all__ = [
     "ConversationNotFoundError",
@@ -2222,5 +2362,4 @@ __all__ = [
     "capability_call_id",
     "capability_task_id",
     "lifecycle_event_id",
-    "root_task_id",
 ]

@@ -4,7 +4,7 @@ from typing import Dict, Any
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from pydantic import BaseModel, Field
 
-from omnicell_agent.schema.state import Annotation_State
+from omnicell_agent.schema.state import ClusterAnnotationState
 from omnicell_agent import llm
 
 logger = logging.getLogger(__name__)
@@ -15,28 +15,33 @@ class ValidatorOutput(BaseModel):
 
     is_supported: bool = Field(
         ...,
-        description="输入的这批 Marker 是否从生物学机理上严格且独有地支持刚鉴定出的该细胞亚群？",
+        description="当前 marker panel 是否与候选标签相容且没有未解决的关键冲突。",
     )
     confidence_penalty: int = Field(
         ...,
-        description="根据支持度开出的惩罚扣分，基于 0 到 50。0代表证据确凿，50代表彻头彻尾的指鹿为马/大模型幻觉。",
+        ge=0,
+        le=50,
+        description="启发式证据扣分（0-50）；越高表示支持越弱、冲突越大或标签粒度越过度。",
     )
     critique: str = Field(
         ...,
-        description="用一段话简明扼要地给出你的复审红蓝对抗意见，哪里不合理？",
+        min_length=1,
+        max_length=2_000,
+        description="简要说明主要支持、冲突、替代解释和需要人工复核的原因。",
     )
 
 
-def validator_node(state: Annotation_State) -> Dict[str, Any]:
+def validator_node(state: ClusterAnnotationState) -> Dict[str, Any]:
     """
-    Sub-Graph B 并发节点: Validator
+    细胞注释内部并发节点：Validator。
     接手 Annotator/Boost 产生的预测结果，注入物种与组织语境，执行红蓝对抗复核。
     """
     cluster_id = state.get("cluster_id", "Unknown")
     top_markers = state.get("top_n_markers", [])
+    quantitative_markers = state.get("top_marker_evidence", [])
     predictions = state.get("predictions", {})
     sub_type = predictions.get("sub_type", "Unknown")
-    species = (state.get("species") or "Human").strip() or "Human"
+    species = (state.get("species") or "Unknown").strip() or "Unknown"
     tissue = (state.get("tissue") or "Unknown").strip() or "Unknown"
     annotator_reasoning = (predictions.get("reasoning_chain") or "").strip()
     marker_evidence = predictions.get("marker_evidence") or []
@@ -47,29 +52,36 @@ def validator_node(state: Annotation_State) -> Dict[str, Any]:
 
     logger.info(f"--- NODE: VALIDATOR (Cluster {cluster_id}) ---")
 
-    if not top_markers or sub_type == "Unknown" or sub_type.startswith("Error"):
+    if (
+        not top_markers
+        or not quantitative_markers
+        or sub_type == "Unknown"
+        or sub_type.startswith("Error")
+    ):
         logger.warning(f"[Cluster {cluster_id}] 无有效鉴定结果可供审计，给出顶额惩罚。")
         return {"quality_scores": {"validator_penalty": 50}}
 
     system_prompt = (
-        "You are an independent, highly critical peer reviewer for single-cell annotations. "
+        "You are an independent reviewer of a provisional single-cell cluster annotation. "
         f"The sample is described as **{species}** / **{tissue}**. "
-        "Evaluate whether the proposed cell type is biologically plausible given BOTH the marker evidence "
-        "AND the tissue context. "
-        "Check:\n"
-        "1. Do these DE markers uniquely and robustly support this cell type?\n"
-        "2. Is this cell type ordinarily expected in this tissue? If not, is there extraordinary marker "
-        "evidence that would justify a rare or unexpected population?\n"
-        "3. Review the annotator's reasoning and marker_evidence for logical gaps or tissue-context mismatch.\n"
-        "Be extremely harsh on tissue-context mismatches without strong marker support. "
-        "Deduct confidence_penalty (0-50) for weak evidence, shared lineages, or clear hallucinations."
+        "Evaluate compatibility between the proposed label and the supplied quantitative DE marker "
+        "panel. Interpret adjusted significance, effect size, within-cluster expression, "
+        "out-of-cluster expression, and delta_pct together; no single metric proves identity. "
+        "Check coherent positive evidence, conflicting or non-specific markers, plausible alternative "
+        "labels, mixed/doublet/state signals, and whether subtype precision exceeds the evidence. "
+        "Use tissue and species as context, not as a whitelist: an unexpected population requires stronger "
+        "marker evidence but must not be rejected from prior expectation alone. Top-marker omission is not "
+        "proof of true absence. Return an evidence-based critique and a 0-50 heuristic penalty; do not "
+        "describe the result as uniquely proven, calibrated confidence, or verified identity."
     )
 
     user_prompt = (
         f"Sample context: {species} | {tissue}\n"
-        f"Top DE markers: {', '.join(top_markers)}\n"
+        "Bounded quantitative DE marker panel:\n"
+        + "\n".join(f"- {marker}" for marker in quantitative_markers)
+        + "\n"
         f"Proposed cell type (sub_type): {sub_type}\n"
-        f"Annotator reasoning chain:\n{annotator_reasoning or '(not provided)'}\n"
+        f"Annotator evidence assessment:\n{annotator_reasoning or '(not provided)'}\n"
         f"Annotator marker_evidence:\n{me_text or '(not provided)'}\n\n"
         "Critically evaluate this annotation."
     )
@@ -80,14 +92,18 @@ def validator_node(state: Annotation_State) -> Dict[str, Any]:
     structured_llm = model.with_structured_output(ValidatorOutput)
 
     try:
-        logger.info(f"[Cluster {cluster_id}] 正在进行同行大模型交叉纠错审计...")
+        logger.info(f"[Cluster {cluster_id}] 正在进行独立证据复核...")
         result: ValidatorOutput = structured_llm.invoke(messages)
 
-        logger.info(f"[Cluster {cluster_id}] Validator 审计完成. 惩罚分: -{result.confidence_penalty}")
+        logger.info(
+            f"[Cluster {cluster_id}] Validator 复核完成. 证据扣分: "
+            f"{result.confidence_penalty}"
+        )
 
         ai_response = AIMessage(
             content=(
-                f"**Validator Critique**:\n{result.critique}\nPenalty Deducted: {result.confidence_penalty}"
+                f"**Validator Critique**:\n{result.critique}\n"
+                f"Evidence Penalty: {result.confidence_penalty}"
             )
         )
 

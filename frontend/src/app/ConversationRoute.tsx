@@ -288,6 +288,16 @@ export function ConversationRoute() {
                 queryKey: queryKeys.artifacts(conversationId),
               });
             }
+            if (event.type === "run.created" || event.type === "run.started") {
+              void Promise.all([
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.conversations,
+                }),
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.conversation(conversationId),
+                }),
+              ]);
+            }
             if (
               event.type === "review.requested" ||
               event.type === "review.resolved"
@@ -330,7 +340,7 @@ export function ConversationRoute() {
 
   const createConversationMutation = useMutation({
     mutationFn: (_: { errorScope: string }) =>
-      createConversation({ title: "新分析对话" }),
+      createConversation({}),
     onMutate: ({ errorScope }) => clearCommandError(errorScope),
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
@@ -360,9 +370,17 @@ export function ConversationRoute() {
     onMutate: ({ targetConversationId }) =>
       clearCommandError(targetConversationId),
     onSuccess: async (_, { targetConversationId }) => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.history(targetConversationId),
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.conversations,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.conversation(targetConversationId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.history(targetConversationId),
+        }),
+      ]);
     },
     onError: (error, { targetConversationId }) =>
       recordCommandError(targetConversationId, error),

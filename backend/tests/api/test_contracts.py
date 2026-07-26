@@ -88,7 +88,7 @@ def test_review_snapshot_links_to_deterministic_capability_task() -> None:
         id=uuid4(),
         conversation_id=uuid4(),
         run_id=run_id,
-        capability_name="single_cell_analysis",
+        capability_name="run_exploratory_analysis",
         tool_call_id=tool_call_id,
         checkpoint_thread_id=str(run_id),
         checkpoint_ns="",
@@ -119,6 +119,33 @@ def test_persisted_event_uses_discriminator_and_decimal_sequence() -> None:
     assert serialized["sequence"] == "9007199254740993"
     assert serialized["type"] == "run.completed"
     assert serialized["schema_version"] == 1
+
+
+def test_skill_context_stale_failed_event_is_wire_valid() -> None:
+    skill_load_identity = uuid4()
+    event = validate_persisted_event(
+        _event_envelope(
+            EventType.SKILL_LOAD_FAILED,
+            {
+                "skill_load_id": str(skill_load_identity),
+                "skill_name": "pca-clustering",
+                "resource_kind": "body",
+                "resource_name": None,
+                "skill_version": None,
+                "resource_sha256": None,
+                "purpose": "domain_method",
+                "error_code": "skill_context_stale",
+                "error_summary": (
+                    "已清理失效的 Skill 方法上下文；"
+                    "可以重新加载当前 Skill。"
+                ),
+            },
+        )
+    )
+
+    assert event.payload.error_code == "skill_context_stale"
+    assert event.payload.skill_load_id == skill_load_identity
+    assert "retryable" not in event.payload.model_dump()
 
 
 def test_serialized_event_wire_schema_requires_version_and_discriminator() -> None:
@@ -152,6 +179,9 @@ def test_event_types_cover_required_persisted_and_transient_facts() -> None:
         "run.created",
         "run.started",
         "agent.turn_started",
+        "agent.tool_started",
+        "agent.tool_completed",
+        "agent.tool_failed",
         "message.completed",
         "task.created",
         "task.updated",

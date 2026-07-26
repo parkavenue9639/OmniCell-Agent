@@ -69,8 +69,11 @@ def test_postgres_settings_rejects_shared_application_and_checkpoint_schema() ->
 
 def test_checkpoint_identity_contract() -> None:
     assert checkpoint_thread_id("abc") == "conversation:abc"
-    assert checkpoint_namespace("Graph A") == "graph_a"
-    assert checkpoint_namespace("graph_b", "run-1") == "graph_b:run-1"
+    assert checkpoint_namespace("Exploratory Analysis") == "exploratory_analysis"
+    assert (
+        checkpoint_namespace("cell_annotation", "run-1")
+        == "cell_annotation:run-1"
+    )
 
 
 def test_checkpoint_serializer_round_trips_allowed_message() -> None:

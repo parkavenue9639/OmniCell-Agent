@@ -2,6 +2,312 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "persisted": {
     "$defs": {
+      "AgentToolCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/AgentToolCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "agent.tool_completed",
+            "default": "agent.tool_completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "AgentToolCompletedEvent",
+        "type": "object"
+      },
+      "AgentToolCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "control",
+              "skill",
+              "domain"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "tool_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "tool_name",
+          "category",
+          "summary"
+        ],
+        "title": "AgentToolCompletedPayload",
+        "type": "object"
+      },
+      "AgentToolFailedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/AgentToolFailedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "agent.tool_failed",
+            "default": "agent.tool_failed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "AgentToolFailedEvent",
+        "type": "object"
+      },
+      "AgentToolFailedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "control",
+              "skill",
+              "domain"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "error_code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Error Summary",
+            "type": "string"
+          },
+          "recovery_hint": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Recovery Hint",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "tool_call_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "tool_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "tool_name",
+          "category",
+          "error_code",
+          "error_summary",
+          "retryable",
+          "recovery_hint"
+        ],
+        "title": "AgentToolFailedPayload",
+        "type": "object"
+      },
+      "AgentToolStartedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/AgentToolStartedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "agent.tool_started",
+            "default": "agent.tool_started",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "AgentToolStartedEvent",
+        "type": "object"
+      },
+      "AgentToolStartedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "control",
+              "skill",
+              "domain"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "tool_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "tool_name",
+          "category"
+        ],
+        "title": "AgentToolStartedPayload",
+        "type": "object"
+      },
       "AgentTurnStartedEvent": {
         "additionalProperties": false,
         "properties": {
@@ -382,7 +688,8 @@
               {
                 "enum": [
                   "completed",
-                  "aborted"
+                  "aborted",
+                  "skipped"
                 ],
                 "type": "string"
               },
@@ -2420,6 +2727,11 @@
             "default": null,
             "title": "Resource Name"
           },
+          "resource_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Resource Sha256",
+            "type": "string"
+          },
           "skill_load_id": {
             "format": "uuid",
             "title": "Skill Load Id",
@@ -2431,12 +2743,20 @@
             "pattern": "^[a-z][a-z0-9-]*$",
             "title": "Skill Name",
             "type": "string"
+          },
+          "skill_version": {
+            "maxLength": 32,
+            "pattern": "^[0-9]+\\.[0-9]+$",
+            "title": "Skill Version",
+            "type": "string"
           }
         },
         "required": [
           "skill_load_id",
           "skill_name",
           "resource_kind",
+          "skill_version",
+          "resource_sha256",
           "purpose",
           "outcome",
           "content_bytes"
@@ -2505,7 +2825,12 @@
         "additionalProperties": false,
         "properties": {
           "error_code": {
-            "const": "skill_resource_unavailable",
+            "enum": [
+              "skill_resource_unavailable",
+              "skill_body_required",
+              "skill_context_limit_exceeded",
+              "skill_context_stale"
+            ],
             "title": "Error Code",
             "type": "string"
           },
@@ -2548,6 +2873,19 @@
             "default": null,
             "title": "Resource Name"
           },
+          "resource_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Resource Sha256"
+          },
           "skill_load_id": {
             "format": "uuid",
             "title": "Skill Load Id",
@@ -2559,6 +2897,20 @@
             "pattern": "^[a-z][a-z0-9-]*$",
             "title": "Skill Name",
             "type": "string"
+          },
+          "skill_version": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "pattern": "^[0-9]+\\.[0-9]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Skill Version"
           }
         },
         "required": [
@@ -2665,6 +3017,19 @@
             "default": null,
             "title": "Resource Name"
           },
+          "resource_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Resource Sha256"
+          },
           "skill_load_id": {
             "format": "uuid",
             "title": "Skill Load Id",
@@ -2676,6 +3041,20 @@
             "pattern": "^[a-z][a-z0-9-]*$",
             "title": "Skill Name",
             "type": "string"
+          },
+          "skill_version": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "pattern": "^[0-9]+\\.[0-9]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Skill Version"
           }
         },
         "required": [
@@ -2902,6 +3281,9 @@
     },
     "discriminator": {
       "mapping": {
+        "agent.tool_completed": "#/$defs/AgentToolCompletedEvent",
+        "agent.tool_failed": "#/$defs/AgentToolFailedEvent",
+        "agent.tool_started": "#/$defs/AgentToolStartedEvent",
         "agent.turn_started": "#/$defs/AgentTurnStartedEvent",
         "artifact.created": "#/$defs/ArtifactCreatedEvent",
         "budget.exhausted": "#/$defs/BudgetExhaustedEvent",
@@ -2940,6 +3322,15 @@
       },
       {
         "$ref": "#/$defs/AgentTurnStartedEvent"
+      },
+      {
+        "$ref": "#/$defs/AgentToolStartedEvent"
+      },
+      {
+        "$ref": "#/$defs/AgentToolCompletedEvent"
+      },
+      {
+        "$ref": "#/$defs/AgentToolFailedEvent"
       },
       {
         "$ref": "#/$defs/MessageCompletedEvent"

@@ -10,14 +10,14 @@ project_root = Path(
 ).expanduser().resolve(strict=False)
 load_project_environment()
 
-# Graph A 是否启用视觉质量评估。
+# 探索性分析是否启用视觉质量评估。
 ENABLE_VISION_EVAL = os.getenv("ENABLE_VISION_EVAL", "True").lower() in ("true", "1", "t")
 
-# Graph B Annotator 是否启用三温度自一致性投票。
+# 细胞注释 Annotator 是否启用三温度自一致性投票。
 ENABLE_SELF_CONSISTENCY = os.getenv("ENABLE_SELF_CONSISTENCY", "True").lower() in ("true", "1", "t")
 
-# Graph B 是否在 Reporter 前运行跨簇 consistency reviewer。
+# 细胞注释是否在 Reporter 前运行跨簇 consistency reviewer。
 ENABLE_CONSISTENCY_REVIEWER = os.getenv("ENABLE_CONSISTENCY_REVIEWER", "True").lower() in ("true", "1", "t")
 
-# Graph B 微观图中低分簇是否触发 Boost 深潜纠错。
+# 细胞注释低分 cluster 是否触发 Boost 深潜纠错。
 ENABLE_BOOST = os.getenv("ENABLE_BOOST", "True").lower() in ("true", "1", "t")
