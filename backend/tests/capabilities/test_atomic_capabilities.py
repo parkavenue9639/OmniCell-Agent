@@ -11,7 +11,13 @@ import pytest
 
 from omnicell_agent.capabilities.artifacts import ConversationArtifactStore
 from omnicell_agent.capabilities.atomic import build_atomic_capabilities
-from omnicell_agent.capabilities.contracts import AtomicAnalysisRequest
+from omnicell_agent.capabilities.contracts import (
+    ClusterCellsRequest,
+    FindMarkerGenesRequest,
+    NormalizeExpressionRequest,
+    PlotPcaClustersRequest,
+    QualityControlRequest,
+)
 from omnicell_agent.capabilities.errors import CapabilityExecutionError
 from omnicell_agent.capabilities.registry import CapabilityContext
 
@@ -56,16 +62,16 @@ class _ControlledAtomicSession:
 
         metrics = {
             "n_obs_before": 8,
-            "n_obs_after": 6 if operation == "run_qc_and_filter" else 8,
+            "n_obs_after": 6 if operation == "quality_control" else 8,
             "n_vars_before": 12,
-            "n_vars_after": 10 if operation == "run_qc_and_filter" else 12,
+            "n_vars_after": 10 if operation == "quality_control" else 12,
             "has_pca": operation
-            in {"run_pca_clustering", "generate_pca_scatter"},
+            in {"cluster_cells", "plot_pca_clusters"},
             "has_leiden": operation
             in {
-                "run_pca_clustering",
-                "extract_marker_genes",
-                "generate_pca_scatter",
+                "cluster_cells",
+                "find_marker_genes",
+                "plot_pca_clusters",
             },
         }
         (output_root / "summary.json").write_text(
@@ -73,20 +79,20 @@ class _ControlledAtomicSession:
             encoding="utf-8",
         )
         if operation in {
-            "run_qc_and_filter",
-            "run_normalize_log",
-            "run_pca_clustering",
+            "quality_control",
+            "normalize_expression",
+            "cluster_cells",
         }:
             (output_root / "dataset.h5ad").write_bytes(
                 f"derived:{operation}".encode()
             )
-        if operation == "extract_marker_genes":
+        if operation == "find_marker_genes":
             markers = [] if self.empty_markers else _MARKERS
             (output_root / "markers.json").write_text(
                 json.dumps(markers),
                 encoding="utf-8",
             )
-        if operation in {"run_pca_clustering", "generate_pca_scatter"}:
+        if operation in {"cluster_cells", "plot_pca_clusters"}:
             (output_root / "plot.png").write_bytes(b"png")
         return {
             "status": "success",
@@ -140,11 +146,11 @@ def _context(tmp_path: Path):
 @pytest.mark.parametrize(
     "operation",
     [
-        "run_qc_and_filter",
-        "run_normalize_log",
-        "run_pca_clustering",
-        "extract_marker_genes",
-        "generate_pca_scatter",
+        "quality_control",
+        "normalize_expression",
+        "cluster_cells",
+        "find_marker_genes",
+        "plot_pca_clusters",
     ],
 )
 def test_atomic_capability_publishes_bounded_typed_artifacts(
@@ -160,10 +166,14 @@ def test_atomic_capability_publishes_bounded_typed_artifacts(
         )
     }
 
-    result = handlers[operation].invoke(
-        AtomicAnalysisRequest(dataset=source),
-        context,
-    )
+    request_models = {
+        "quality_control": QualityControlRequest,
+        "normalize_expression": NormalizeExpressionRequest,
+        "cluster_cells": ClusterCellsRequest,
+        "find_marker_genes": FindMarkerGenesRequest,
+        "plot_pca_clusters": PlotPcaClustersRequest,
+    }
+    result = handlers[operation].invoke(request_models[operation](dataset=source), context)
 
     assert result.operation == operation
     assert result.source_dataset == source
@@ -179,18 +189,18 @@ def test_atomic_capability_publishes_bounded_typed_artifacts(
         for ref in result.artifacts
     )
     if operation in {
-        "run_qc_and_filter",
-        "run_normalize_log",
-        "run_pca_clustering",
+        "quality_control",
+        "normalize_expression",
+        "cluster_cells",
     }:
         assert result.output_dataset is not None
         assert result.output_dataset.kind == "dataset"
     else:
         assert result.output_dataset is None
-    if operation == "extract_marker_genes":
+    if operation == "find_marker_genes":
         assert result.marker_table is not None
         assert result.marker_table.kind == "marker_table"
-    if operation == "generate_pca_scatter":
+    if operation == "plot_pca_clusters":
         assert any(ref.kind == "image" for ref in result.artifacts)
     assert sessions and "sc.read_h5ad(raw_data_path)" in sessions[0].codes[0]
 
@@ -206,8 +216,8 @@ def test_atomic_dataset_output_can_be_hydrated_by_next_invocation(
         )
     }
 
-    result = handlers["run_normalize_log"].invoke(
-        AtomicAnalysisRequest(dataset=source),
+    result = handlers["normalize_expression"].invoke(
+        NormalizeExpressionRequest(dataset=source),
         context,
     )
     assert result.output_dataset is not None
@@ -234,8 +244,8 @@ def test_atomic_marker_tool_rejects_empty_contract(tmp_path: Path) -> None:
     }
 
     with pytest.raises(CapabilityExecutionError, match="为空"):
-        handlers["extract_marker_genes"].invoke(
-            AtomicAnalysisRequest(dataset=source),
+        handlers["find_marker_genes"].invoke(
+            FindMarkerGenesRequest(dataset=source),
             context,
         )
 
@@ -252,10 +262,11 @@ def test_pca_scatter_adapter_enforces_explicit_scientific_precondition(
         )
     }
 
-    handlers["generate_pca_scatter"].invoke(
-        AtomicAnalysisRequest(dataset=source),
+    handlers["plot_pca_clusters"].invoke(
+        PlotPcaClustersRequest(dataset=source),
         context,
     )
 
     assert "ATOMIC_INPUT_ERROR" in sessions[0].codes[0]
-    assert "requires X_pca and leiden" in sessions[0].codes[0]
+    assert "input requires X_pca" in sessions[0].codes[0]
+    assert "input requires leiden" in sessions[0].codes[0]

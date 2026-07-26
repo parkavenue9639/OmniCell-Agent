@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Tuple
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from pydantic import BaseModel, Field
 
-from omnicell_agent.schema.state import Annotation_State
+from omnicell_agent.schema.state import ClusterAnnotationState
 from omnicell_agent import llm
 from omnicell_agent.core.config import ENABLE_SELF_CONSISTENCY
 
@@ -15,23 +15,35 @@ TEMPERATURES = (0.1, 0.4, 0.7)
 
 
 class AnnotationOutput(BaseModel):
-    """强制 LLM 输出的分步推理与鉴定结果契约"""
+    """LLM 输出的有界证据评估与候选注释契约。"""
 
     reasoning_chain: str = Field(
         ...,
-        description="根据提供的Top Marker基因进行逐步思维链推理（Chain-of-Thought）。",
+        min_length=1,
+        max_length=2_000,
+        description=(
+            "简洁的证据评估摘要，说明主要支持、冲突和不确定性；"
+            "不得输出隐藏的逐步思维链。"
+        ),
     )
     general_type: str = Field(
         ...,
-        description="预测的细胞大类（例如：Immune cells, Epithelial cells, Stromal cells 等）",
+        min_length=1,
+        max_length=200,
+        description="证据支持的细胞大类；证据不足时使用 Unknown。",
     )
     sub_type: str = Field(
         ...,
-        description="极其精确的细胞亚型名字（例如：CD14+ Monocytes, CD8+ T cells 等）",
+        min_length=1,
+        max_length=200,
+        description=(
+            "不超过 marker 证据分辨率的候选亚型；证据不足时使用更宽标签或 Unknown。"
+        ),
     )
     marker_evidence: List[str] = Field(
         ...,
-        description="逐条列出 marker 如何支持或矛盾于所选 sub_type，例如 'CD3D -> T cell lineage'",
+        max_length=30,
+        description="逐条列出 marker panel 对候选标签的支持、冲突或非特异性证据。",
     )
 
 
@@ -63,43 +75,57 @@ def _run_single_annotation(
     return structured_llm.invoke(messages)
 
 
-def annotator_node(state: Annotation_State) -> Dict[str, Any]:
+def annotator_node(state: ClusterAnnotationState) -> Dict[str, Any]:
     """
-    Sub-Graph B 并发节点: Annotator
+    细胞注释内部并发节点：Annotator。
     三温度自一致性投票 + marker 证据锚定。
     """
     cluster_id = state.get("cluster_id", "Unknown")
     top_markers = state.get("top_n_markers", [])
-    species = state.get("species", "Human")
-    tissue = state.get("tissue", "PBMC")
+    quantitative_markers = state.get("top_marker_evidence", [])
+    species = state.get("species", "Unknown")
+    tissue = state.get("tissue", "Unknown")
 
     logger.info(f"--- NODE: ANNOTATOR (Cluster {cluster_id}) ---")
 
-    if not top_markers:
-        logger.warning(f"[Cluster {cluster_id}] 缺少 Marker 基因输入，无法鉴定。")
+    if not top_markers or not quantitative_markers:
+        logger.warning(
+            "[Cluster %s] 缺少完整 Marker 定量证据，无法鉴定。",
+            cluster_id,
+        )
         return {
             "predictions": {"general_type": "Unknown", "sub_type": "Unknown"},
+            "quality_scores": {"annotation_failed": True},
             "reasoning_messages": [
-                AIMessage(content="Error: No marker genes provided for this cluster.")
+                AIMessage(
+                    content=(
+                        "Annotation unavailable: the bounded quantitative marker "
+                        "evidence is missing."
+                    )
+                )
             ],
         }
 
     system_prompt = (
-        "You are an expert single-cell biologist and a rigorous cell type annotator. "
-        f"Your task is to annotate a specific cell cluster from a {species} {tissue} sample.\n"
-        "You will be provided with the top differentially expressed marker genes for this cluster.\n"
-        "Follow Chain-of-Thought (CoT):\n"
-        "1. Observe markers and broad functional signatures (immune vs non-immune, etc.).\n"
-        "2. Identify lineage markers.\n"
-        "3. For your chosen general_type and sub_type, list marker_evidence: for EACH relevant marker, "
-        "state how it supports or contradicts your choice (one short string per marker or small group).\n"
-        "4. Note any markers that conflict with your final label.\n"
-        "Provide the most probable general_type and sub_type consistent with the tissue context."
+        "You are a rigorous single-cell cluster annotator. "
+        f"The supplied sample context is species={species}, tissue={tissue}; "
+        "treat this context as supporting information, not proof of identity.\n"
+        "Use only the provided differential-expression marker panel. Interpret adjusted significance, "
+        "effect size, within-cluster expression, out-of-cluster expression, and delta_pct together; "
+        "no single metric proves identity. Assess coherent lineage support, shared or non-specific "
+        "markers, conflicting evidence, and whether the requested label granularity is justified. "
+        "A missing marker in this top list is not definitive absence.\n"
+        "Return a concise evidence assessment, marker_evidence entries that explicitly identify "
+        "support or conflict, and candidate general_type/sub_type. Use a broader lineage or Unknown "
+        "when the panel is insufficient, mixed, or compatible with multiple labels. Do not output "
+        "hidden step-by-step reasoning and do not claim the label is verified."
     )
 
     user_prompt = (
-        f"Top Marker Genes for Cluster {cluster_id}:\n{', '.join(top_markers)}\n\n"
-        "Provide reasoning, marker_evidence, general_type, and sub_type."
+        f"Bounded quantitative DE marker panel for Cluster {cluster_id}:\n"
+        + "\n".join(f"- {marker}" for marker in quantitative_markers)
+        + "\n\n"
+        "Return evidence assessment, marker_evidence, general_type, and sub_type."
     )
 
     messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
@@ -129,7 +155,8 @@ def annotator_node(state: Annotation_State) -> Dict[str, Any]:
                     f"[Vote 0.7] {results[2].sub_type}. Majority: {chosen.sub_type}."
                 )
                 reasoning_merged = (
-                    f"{vote_summary}\n\n--- Merged reasoning (majority pick) ---\n{chosen.reasoning_chain}"
+                    f"{vote_summary}\n\nEvidence assessment from majority label:\n"
+                    f"{chosen.reasoning_chain}"
                 )
             else:
                 reasoning_merged = chosen.reasoning_chain
@@ -142,7 +169,7 @@ def annotator_node(state: Annotation_State) -> Dict[str, Any]:
 
         ai_response = AIMessage(
             content=(
-                f"**Reasoning Chain**:\n{reasoning_merged}\n\n**Decision**:\n"
+                f"**Evidence assessment**:\n{reasoning_merged}\n\n**Candidate annotation**:\n"
                 f"General Type: {chosen.general_type}\nSub Type: {chosen.sub_type}\n"
                 f"**Marker evidence**:\n"
                 + "\n".join(f"- {m}" for m in chosen.marker_evidence)
@@ -164,8 +191,21 @@ def annotator_node(state: Annotation_State) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"[Cluster {cluster_id}] 鉴定过程中发生阻断级异常: {e}")
+        logger.error(
+            "[Cluster %s] 注释模型调用失败，本 cluster 返回 Unknown",
+            cluster_id,
+            exc_info=e,
+        )
         return {
-            "predictions": {"general_type": "Error", "sub_type": f"Error: {e}"},
+            "predictions": {
+                "general_type": "Unknown",
+                "sub_type": "Unknown",
+                "reasoning_chain": "Annotation model did not return a valid evidence assessment.",
+                "marker_evidence": [],
+            },
+            "quality_scores": {
+                "self_consistency_ok": 0.0,
+                "annotation_failed": True,
+            },
             "reasoning_messages": [],
         }

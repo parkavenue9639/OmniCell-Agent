@@ -9,7 +9,10 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from omnicell_agent.capabilities.errors import CapabilityExecutionError
+from omnicell_agent.capabilities.errors import (
+    CapabilityExecutionError,
+    CapabilityInputError,
+)
 from .cancellation import CancellationToken
 from .capability_process import CapabilityInvoker, RuntimeCleanupError
 from .observer import AgentObserver
@@ -161,6 +164,20 @@ class AsyncCapabilityExecutor:
                 )
             except RuntimeCleanupError:
                 raise
+            except CapabilityInputError as exc:
+                await self._observer.emit(
+                    "capability.failed",
+                    {
+                        "capability": name,
+                        "tool_call_id": tool_call_id,
+                        "error": str(exc)[:1_000],
+                        "error_code": "capability_input_invalid",
+                        "retryable": False,
+                        "attempt": attempt + 1,
+                    },
+                    dedupe_key=f"capability:{tool_call_id}:failed",
+                )
+                raise
             except CapabilityExecutionError as exc:
                 if attempt >= self._max_retries:
                     await self._observer.emit(
@@ -169,7 +186,8 @@ class AsyncCapabilityExecutor:
                             "capability": name,
                             "tool_call_id": tool_call_id,
                             "error": str(exc)[:1_000],
-                            "retryable": True,
+                            "error_code": "capability_execution_failed",
+                            "retryable": False,
                             "attempt": attempt + 1,
                         },
                         dedupe_key=f"capability:{tool_call_id}:failed",
@@ -193,6 +211,7 @@ class AsyncCapabilityExecutor:
                         "capability": name,
                         "tool_call_id": tool_call_id,
                         "error": str(exc)[:1_000],
+                        "error_code": "capability_internal_error",
                         "retryable": False,
                         "attempt": attempt + 1,
                     },

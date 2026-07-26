@@ -120,6 +120,37 @@ describe("projectPersistedEvent", () => {
     expect(result.state.terminalStatus).toBeNull();
   });
 
+  it("投影 Agent Tool 的 started 与结构化失败", () => {
+    const started = projectPersistedEvent(
+      emptyRunProjection(RUN_ID, CONVERSATION_ID),
+      event("1", "agent.tool_started", {
+        tool_call_id: "plan-update-1",
+        tool_name: "update_task_plan",
+        category: "control",
+      }),
+    );
+    const failed = projectPersistedEvent(
+      started.state,
+      event("2", "agent.tool_failed", {
+        tool_call_id: "plan-update-1",
+        tool_name: "update_task_plan",
+        category: "control",
+        error_code: "plan_transition_invalid",
+        error_summary: "计划证据无效",
+        retryable: false,
+        recovery_hint: "使用当前 evidence handle。",
+      }),
+    );
+
+    expect(failed.state.agentTools["plan-update-1"]).toMatchObject({
+      toolName: "update_task_plan",
+      category: "control",
+      status: "failed",
+      errorCode: "plan_transition_invalid",
+      recoveryHint: "使用当前 evidence handle。",
+    });
+  });
+
   it("投影 Skill 加载结果并由取消终态收敛未完成活动", () => {
     const skillLoadId = "77777777-7777-4777-8777-777777777771";
     const runtimeCommandId = "77777777-7777-4777-8777-777777777772";
@@ -139,7 +170,7 @@ describe("projectPersistedEvent", () => {
         task_id: "77777777-7777-4777-8777-777777777775",
         title: "运行 PCA",
         description: null,
-        capability_name: "run_pca_clustering",
+        capability_name: "cluster_cells",
         status: "pending",
       }),
     );
@@ -147,7 +178,7 @@ describe("projectPersistedEvent", () => {
       taskCreated.state,
       event("3", "capability.started", {
         capability_call_id: "77777777-7777-4777-8777-777777777773",
-        capability_name: "run_pca_clustering",
+        capability_name: "cluster_cells",
         task_id: "77777777-7777-4777-8777-777777777775",
         attempt: 1,
       }),
@@ -157,7 +188,7 @@ describe("projectPersistedEvent", () => {
       event("4", "runtime.command_started", {
         runtime_command_id: runtimeCommandId,
         capability_call_id: "77777777-7777-4777-8777-777777777773",
-        capability_name: "run_pca_clustering",
+        capability_name: "cluster_cells",
         task_id: null,
         attempt: 1,
         backend: "local-docker-cli",
@@ -205,6 +236,8 @@ describe("projectPersistedEvent", () => {
         resource_kind: "reference",
         resource_name: "quality-control.md",
         purpose: "validation_rules",
+        skill_version: "1.0",
+        resource_sha256: "a".repeat(64),
       }),
     );
     const completed = projectPersistedEvent(
@@ -215,6 +248,8 @@ describe("projectPersistedEvent", () => {
         resource_kind: "reference",
         resource_name: "quality-control.md",
         purpose: "validation_rules",
+        skill_version: "1.0",
+        resource_sha256: "a".repeat(64),
         outcome: "loaded",
         content_bytes: 2048,
       }),
@@ -225,6 +260,8 @@ describe("projectPersistedEvent", () => {
       skillName: "pca-clustering",
       resourceKind: "reference",
       resourceName: "quality-control.md",
+      skillVersion: "1.0",
+      resourceSha256: "a".repeat(64),
       purpose: "validation_rules",
       status: "completed",
       outcome: "loaded",
@@ -237,7 +274,46 @@ describe("projectPersistedEvent", () => {
     ).toBe(false);
   });
 
-  it("失败终态将仍在执行的 capability 与 task 收敛为失败", () => {
+  it("Skill stale 失败与 started 共用身份并可从事件重放", () => {
+    const skillLoadId = "77777777-7777-4777-8777-777777777779";
+    const started = projectPersistedEvent(
+      emptyRunProjection(RUN_ID, CONVERSATION_ID),
+      event("1", "skill.load_started", {
+        skill_load_id: skillLoadId,
+        skill_name: "pca-clustering",
+        resource_kind: "body",
+        resource_name: null,
+        purpose: "domain_method",
+      }),
+    );
+    const failed = projectPersistedEvent(
+      started.state,
+      event("2", "skill.load_failed", {
+        skill_load_id: skillLoadId,
+        skill_name: "pca-clustering",
+        resource_kind: "body",
+        resource_name: null,
+        purpose: "domain_method",
+        skill_version: null,
+        resource_sha256: null,
+        error_code: "skill_context_stale",
+        error_summary:
+          "已清理失效的 Skill 方法上下文；可以重新加载当前 Skill。",
+      }),
+    );
+
+    expect(failed.kind).toBe("applied");
+    expect(failed.state.skillLoads[skillLoadId]).toMatchObject({
+      skillLoadId,
+      status: "failed",
+      errorCode: "skill_context_stale",
+      errorSummary:
+        "已清理失效的 Skill 方法上下文；可以重新加载当前 Skill。",
+    });
+    expect(failed.state.appliedSequence).toBe("2");
+  });
+
+  it("失败终态将 capability 收敛为失败、未终结 task 收敛为未收敛", () => {
     const taskId = "77777777-7777-4777-8777-777777777776";
     const capabilityCallId = "77777777-7777-4777-8777-777777777777";
     const taskCreated = projectPersistedEvent(
@@ -246,7 +322,7 @@ describe("projectPersistedEvent", () => {
         task_id: taskId,
         title: "执行领域能力",
         description: null,
-        capability_name: "run_pca_clustering",
+        capability_name: "cluster_cells",
         status: "pending",
       }),
     );
@@ -254,7 +330,7 @@ describe("projectPersistedEvent", () => {
       taskCreated.state,
       event("2", "capability.started", {
         capability_call_id: capabilityCallId,
-        capability_name: "run_pca_clustering",
+        capability_name: "cluster_cells",
         task_id: taskId,
         attempt: 1,
       }),
@@ -270,7 +346,7 @@ describe("projectPersistedEvent", () => {
     );
 
     expect(failed.state.capabilities[capabilityCallId].status).toBe("failed");
-    expect(failed.state.tasks[taskId].status).toBe("failed");
+    expect(failed.state.tasks[taskId].status).toBe("interrupted");
   });
 
   it("terminal 后只允许同一事件幂等重放，其他事件均冲突且不推进 cursor", () => {

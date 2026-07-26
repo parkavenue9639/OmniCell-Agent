@@ -15,7 +15,8 @@ from omnicell_agent.agent.executor import AsyncCapabilityExecutor
 from omnicell_agent.agent.observer import NullAgentObserver
 from omnicell_agent.capabilities.artifacts import ConversationArtifactStore
 from omnicell_agent.capabilities.contracts import (
-    CapabilityKind,
+    CapabilityEffect,
+    CapabilityMode,
     CapabilityRequest,
     CapabilitySpec,
 )
@@ -34,7 +35,8 @@ class BlockingResult(BaseModel):
 class BlockingCapability:
     spec = CapabilitySpec(
         name="blocking_tool",
-        kind=CapabilityKind.ATOMIC,
+        mode=CapabilityMode.ATOMIC,
+        effect=CapabilityEffect.CUSTOM,
         description="Controlled blocking test tool.",
         prompt_hint="仅在取消传播测试中调用。",
     )

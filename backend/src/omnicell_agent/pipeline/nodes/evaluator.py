@@ -2,9 +2,10 @@ import logging
 import base64
 import re
 from pathlib import Path
+from typing import Literal
 from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import BaseModel, Field
-from omnicell_agent.schema.state import DataPipeline_State
+from omnicell_agent.schema.state import ExploratoryAnalysisState
 from omnicell_agent.core.config import ENABLE_VISION_EVAL, project_root
 from omnicell_agent.core.prompt_manager import prompt_manager
 from omnicell_agent import llm
@@ -13,8 +14,16 @@ logger = logging.getLogger(__name__)
 
 class VisionEvalResult(BaseModel):
     """用于规范化包裹多模态视觉打分的 Pydantic Schema"""
-    status: str = Field(..., description="评估状态，必须是 'success' 或 'error'")
-    feedback: str = Field(..., description="评估反馈：若是 success 则做简短赞美；若是 error 必须详细描述图表缺陷，以及给 Programmer 建议的详细 Python 纠错重绘指导（例如需修改 scanpy 绘图参数）。")
+    status: Literal["success", "error"] = Field(
+        ...,
+        description="图像是否满足当前绘图步骤的类型、渲染完整性和可读性要求。",
+    )
+    feedback: str = Field(
+        ...,
+        min_length=1,
+        max_length=2_000,
+        description="基于可见图像证据的简要结论；失败时包含完成当前绘图步骤所需的最小修复。",
+    )
 
 def extract_image_path(
     stdout: str,
@@ -40,7 +49,7 @@ def _encode_image(image_path: str) -> str:
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode('utf-8')
 
-def run_evaluator(state: DataPipeline_State) -> dict:
+def run_evaluator(state: ExploratoryAnalysisState) -> dict:
     """
     Evaluator Node
     检查上游 Executor 执行在沙盒里的结果。

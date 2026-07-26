@@ -1,15 +1,16 @@
 import logging
 from typing import Dict, Any
 
-from omnicell_agent.schema.state import Annotation_State
+from omnicell_agent.schema.state import ClusterAnnotationState
 
 logger = logging.getLogger(__name__)
 
 
-def scorer_node(state: Annotation_State) -> Dict[str, Any]:
+def scorer_node(state: ClusterAnnotationState) -> Dict[str, Any]:
     """
-    Sub-Graph B 并发节点: Scorer
-    汇总 Annotator/Validator 结果，产出 0-100 的置信度得分 (cs_score)。
+    细胞注释内部并发节点：Scorer。
+    汇总 Annotator/Validator 结果，产出 0-100 的启发式证据得分 (cs_score)。
+    该分数不是校准概率。
     """
     cluster_id = state.get("cluster_id", "Unknown")
     quality_scores = state.get("quality_scores", {})
@@ -22,6 +23,10 @@ def scorer_node(state: Annotation_State) -> Dict[str, Any]:
         quality_scores = {}
 
     if sub_type == "Unknown" or (isinstance(sub_type, str) and sub_type.startswith("Error")):
+        final_score = 0.0
+    elif not state.get("top_marker_evidence"):
+        # 没有贯通到当前评分路径的定量 DE 证据时，不能给出可误解为
+        # 已评估效应量/特异性的高分。
         final_score = 0.0
     else:
         base_score = 100.0
@@ -45,7 +50,7 @@ def scorer_node(state: Annotation_State) -> Dict[str, Any]:
 
         final_score = max(0.0, base_score - penalty)
 
-    logger.info(f"[Cluster {cluster_id}] 置信度打分完成 => {final_score}/100")
+    logger.info(f"[Cluster {cluster_id}] 启发式证据评分完成 => {final_score}/100")
 
     new_scores = dict(quality_scores) if isinstance(quality_scores, dict) else {}
     new_scores["cs_score"] = final_score

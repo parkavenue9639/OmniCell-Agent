@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict, List
 
-from omnicell_agent.schema.state import SubGraphB_State
+from omnicell_agent.schema.state import CellAnnotationState
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +14,9 @@ def _format_flags(flags: Any) -> str:
     return str(flags)
 
 
-def reporter_node(state: SubGraphB_State) -> Dict[str, Any]:
+def reporter_node(state: CellAnnotationState) -> Dict[str, Any]:
     """
-    Sub-Graph B 总管节点: Reporter
+    细胞注释内部聚合节点：Reporter。
     汇总并发鉴定结果，输出 Markdown 报告与人工复核清单。
     """
     logger.info("--- NODE: REPORTER (Aggregating Multi-Agent Results) ---")
@@ -30,10 +30,14 @@ def reporter_node(state: SubGraphB_State) -> Dict[str, Any]:
         return {"final_report": "Error: No valid cluster annotations found."}
 
     report_lines = [
-        "# OmniCell-Agent 深度共识细胞鉴定报告 (Deep Annotation Report)",
+        "# OmniCell-Agent 细胞类型暂定注释报告",
         f"\n**Species**: `{species}` | **Tissue**: `{tissue}`",
-        f"**Total Clusters Authenticated**: `{len(cluster_annotations)}`",
-        "\n| Cluster ID | General Lineage | Specific Sub-Type | CS Score | Flags | Validated Evidence |",
+        f"**Total Clusters Annotated**: `{len(cluster_annotations)}`",
+        (
+            "\n> 注：Evidence Score 是内部启发式证据评分，不是校准概率；"
+            "所有标签均应结合原始 marker 和实验背景解释。"
+        ),
+        "\n| Cluster ID | General Lineage | Candidate Sub-Type | Evidence Score | Flags | Review Status |",
         "| :---: | :--- | :--- | :---: | :--- | :--- |",
     ]
 
@@ -53,15 +57,13 @@ def reporter_node(state: SubGraphB_State) -> Dict[str, Any]:
             score = 0.0
         flags = ann.get("flags") or []
 
-        evidence = "✅ Verified"
-        if isinstance(subtype, str) and "(Boosted)" in subtype:
-            evidence = "⚠️ Escalate & Boosted"
-        if isinstance(subtype, str) and "(NeedsReview)" in subtype:
-            evidence = "⚠️ Needs manual review"
-        if score < 60:
-            evidence = "❌ High Hallucination Risk"
+        evidence = "No automatic review flag"
+        if "boosted" in flags:
+            evidence = "Reassessed; inspect evidence"
+        if "needs_review" in flags or score < 75:
+            evidence = "Manual review recommended"
         if "cross_cluster_outlier" in flags:
-            evidence = "⚠️ Cross-cluster outlier"
+            evidence = "Cross-cluster outlier; review"
 
         flag_str = _format_flags(flags)
 
@@ -70,9 +72,8 @@ def reporter_node(state: SubGraphB_State) -> Dict[str, Any]:
         )
 
         needs_list = (
-            score < 60.0
+            score < 75.0
             or bool(flags)
-            or (isinstance(subtype, str) and "(NeedsReview)" in subtype)
         )
         if needs_list:
             review_rows.append(
@@ -83,7 +84,7 @@ def reporter_node(state: SubGraphB_State) -> Dict[str, Any]:
     if review_rows:
         report_lines.extend(review_rows)
     else:
-        report_lines.append("_No clusters flagged for mandatory review._")
+        report_lines.append("_没有 cluster 被自动规则标记为需要人工复核。_")
 
     final_markdown = "\n".join(report_lines)
 

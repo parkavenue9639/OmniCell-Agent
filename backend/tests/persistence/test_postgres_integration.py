@@ -233,7 +233,7 @@ async def test_postgres_enforces_one_active_run_per_conversation(
                 conversation_id=conversation_id,
                 run_id=active.id,
                 tool_call_id="tool-1",
-                capability_name="single_cell_analysis",
+                capability_name="run_exploratory_analysis",
                 request_payload={"goal": "controlled"},
             )
         )
@@ -241,7 +241,7 @@ async def test_postgres_enforces_one_active_run_per_conversation(
             Review(
                 conversation_id=conversation_id,
                 run_id=active.id,
-                capability_name="single_cell_analysis",
+                capability_name="run_exploratory_analysis",
                 tool_call_id="tool-1",
                 checkpoint_thread_id=checkpoint_thread_id(str(conversation_id)),
                 checkpoint_ns="",
@@ -392,8 +392,8 @@ async def test_postgres_migration_event_checkpoint_resume_and_retention(
         result = await graph.ainvoke({"value": value}, root_config, durability="sync")
         assert result["value"] == value + 1
 
-    namespace_a = checkpoint_namespace("graph_a", "compat")
-    namespace_b = checkpoint_namespace("graph_b", "compat")
+    namespace_a = checkpoint_namespace("exploratory_analysis", "first")
+    namespace_b = checkpoint_namespace("cell_annotation", "second")
     config_a = await _put_namespaced_checkpoints(
         saver,
         thread_id=thread_id,

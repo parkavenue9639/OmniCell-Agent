@@ -19,6 +19,16 @@ export interface TaskProjection {
   readonly summary: string | null;
 }
 
+export interface AgentToolProjection {
+  readonly toolCallId: string;
+  readonly toolName: string;
+  readonly category: "control" | "skill" | "domain";
+  readonly status: "running" | "completed" | "failed" | "cancelled";
+  readonly summary: string | null;
+  readonly errorCode: string | null;
+  readonly recoveryHint: string | null;
+}
+
 export interface CapabilityProjection {
   readonly capabilityCallId: string;
   readonly capabilityName: string;
@@ -43,6 +53,8 @@ export interface SkillLoadProjection {
   readonly skillName: string;
   readonly resourceKind: "body" | "reference" | "example";
   readonly resourceName: string | null;
+  readonly skillVersion: string | null;
+  readonly resourceSha256: string | null;
   readonly purpose:
     | "domain_method"
     | "validation_rules"
@@ -103,6 +115,7 @@ export interface RunProjection {
   readonly stopReason: string | null;
   readonly messages: readonly TimelineMessage[];
   readonly tasks: Readonly<Record<string, TaskProjection>>;
+  readonly agentTools: Readonly<Record<string, AgentToolProjection>>;
   readonly skillLoads: Readonly<Record<string, SkillLoadProjection>>;
   readonly capabilities: Readonly<Record<string, CapabilityProjection>>;
   readonly runtimeCommands: Readonly<Record<string, RuntimeCommandProjection>>;
@@ -125,6 +138,7 @@ export function emptyRunProjection(
     stopReason: null,
     messages: [],
     tasks: {},
+    agentTools: {},
     skillLoads: {},
     capabilities: {},
     runtimeCommands: {},

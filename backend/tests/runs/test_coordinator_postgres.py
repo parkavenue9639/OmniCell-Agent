@@ -11,6 +11,7 @@ from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Literal
 
 import psycopg
 import pytest
@@ -40,11 +41,14 @@ from omnicell_agent.capabilities.artifacts import (
 )
 from omnicell_agent.capabilities.catalog import SkillCatalog, SkillDefinition
 from omnicell_agent.capabilities.contracts import (
-    CapabilityKind,
+    CapabilityEffect,
+    CapabilityMode,
     CapabilityRequest,
     CapabilitySpec,
 )
-from omnicell_agent.capabilities.graph_a import SingleCellAnalysisCapability
+from omnicell_agent.capabilities.exploratory_analysis import (
+    ExploratoryAnalysisCapability,
+)
 from omnicell_agent.capabilities.registry import CapabilityContext, CapabilityRegistry
 from omnicell_agent.persistence.bootstrap import PersistenceRuntime
 from omnicell_agent.persistence.config import PostgresSettings
@@ -86,7 +90,8 @@ class EchoResult(BaseModel):
 class EchoCapability:
     spec = CapabilitySpec(
         name="echo_tool",
-        kind=CapabilityKind.ATOMIC,
+        mode=CapabilityMode.ATOMIC,
+        effect=CapabilityEffect.CUSTOM,
         description="Controlled echo for coordinator tests.",
         prompt_hint="Call only for the controlled coordinator echo.",
     )
@@ -110,6 +115,31 @@ class SecretFailingCapability(EchoCapability):
     ) -> EchoResult:
         del request, context
         raise RuntimeError("token=checker-secret host=/Users/example/private")
+
+
+class AbortedResult(BaseModel):
+    status: Literal["aborted"] = "aborted"
+    diagnostic_summary: str
+
+
+class AbortedCapability(EchoCapability):
+    spec = CapabilitySpec(
+        name="aborted_tool",
+        mode=CapabilityMode.COMPOSITE,
+        effect=CapabilityEffect.CUSTOM,
+        description="Controlled aborted capability.",
+        prompt_hint="Only used for persistence consistency tests.",
+    )
+    result_model = AbortedResult
+
+    def invoke(
+        self,
+        request: CapabilityRequest,
+        context: CapabilityContext,
+    ) -> AbortedResult:
+        del request, context
+        self.calls += 1
+        return AbortedResult(diagnostic_summary="controlled abort")
 
 
 def _layer(handler=None) -> DomainCapabilityLayer:
@@ -202,6 +232,38 @@ class EchoingCapabilityFailureModel:
         return _finish(f"模型观察到的失败反馈：{self.tool_feedback}")
 
 
+class AbortedCapabilityModel:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.tool_feedback: str | None = None
+
+    def bind_tools(self, tools):
+        del tools
+        return self
+
+    async def ainvoke(self, messages):
+        self.calls += 1
+        if self.calls == 1:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "aborted_tool",
+                        "args": {"text": "controlled"},
+                        "id": "aborted-tool-call",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        tool_message = next(
+            message
+            for message in reversed(messages)
+            if isinstance(message, ToolMessage)
+        )
+        self.tool_feedback = str(tool_message.content)
+        return _finish("能力未完成，已向用户说明限制")
+
+
 class BlockingFinishModel:
     def __init__(self) -> None:
         self.started = asyncio.Event()
@@ -265,19 +327,37 @@ class ArtifactRoutingModel:
         self.seen_descriptor: dict[str, object] | None = None
 
     def bind_tools(self, tools):
-        assert any(
-            tool["function"]["name"] == "single_cell_analysis" for tool in tools
-        )
+        names = {tool["function"]["name"] for tool in tools}
+        if self.calls == 0:
+            assert "run_exploratory_analysis" not in names
+        else:
+            assert "run_exploratory_analysis" in names
         return self
 
     async def ainvoke(self, messages):
         self.calls += 1
         if self.calls == 1:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "load_skill",
+                        "args": {
+                            "skill_name": "exploratory-analysis",
+                            "purpose": "domain_method",
+                        },
+                        "id": "load-exploratory-method",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        if self.calls == 2:
             context = next(
                 message.content
                 for message in messages
                 if isinstance(message, SystemMessage)
-                and "输入 artifact 权威描述" in str(message.content)
+                and "本次 run 已通过 ownership 校验的输入 artifact 句柄"
+                in str(message.content)
             )
             descriptor = json.loads(str(context).split("：\n", 1)[1])[0]
             self.seen_descriptor = descriptor
@@ -285,17 +365,22 @@ class ArtifactRoutingModel:
                 content="",
                 tool_calls=[
                     {
-                        "name": "single_cell_analysis",
-                        "args": {"dataset": descriptor, "goal": "生成 marker"},
-                        "id": "graph-a-selected-dataset",
+                        "name": "run_exploratory_analysis",
+                        "args": {
+                            "dataset": {
+                                "artifact_id": descriptor["artifact_id"],
+                            },
+                            "goal": "生成 marker",
+                        },
+                        "id": "exploratory-selected-dataset",
                         "type": "tool_call",
                     }
                 ],
             )
-        return _finish("Graph A 已完成")
+        return _finish("探索性分析已完成")
 
 
-class ControlledGraphA:
+class ControlledExploratoryEngine:
     def __init__(self) -> None:
         self.initial_state: dict[str, object] | None = None
 
@@ -325,8 +410,8 @@ class ControlledGraphA:
             **state,
             "plan_steps": [
                 {
-                    "step_type": "skill_call",
-                    "skill_name": "marker_genes_extractor",
+                    "step_type": "recipe_call",
+                    "recipe_name": "marker_genes_extractor",
                     "instruction": "导出 marker",
                 }
             ],
@@ -384,6 +469,7 @@ def _coordinator(
     *,
     policy=None,
     config=None,
+    title_generator=None,
 ):
     return RunCoordinator(
         runtime.unit_of_work,
@@ -396,6 +482,7 @@ def _coordinator(
             capability_invoker_factory=CooperativeInProcessCapabilityInvoker,
         ),
         workspace_root=tmp_path / "workspaces",
+        title_generator=title_generator,
     )
 
 
@@ -408,9 +495,152 @@ def _coordinator_with_factory(runtime, tmp_path, factory):
     )
 
 
+class _StaticTitleGenerator:
+    def __init__(self, title: str) -> None:
+        self.title = title
+        self.goals: list[str] = []
+
+    async def generate(self, goal: str) -> str:
+        self.goals.append(goal)
+        return self.title
+
+
+class _FailingTitleGenerator:
+    async def generate(self, _goal: str) -> str:
+        raise RuntimeError("controlled title failure")
+
+
+class _InvalidTitleGenerator:
+    async def generate(self, _goal: str) -> str:
+        return None  # type: ignore[return-value]
+
+
+@pytest.mark.asyncio
+async def test_first_run_persists_dynamic_conversation_title(runtime, tmp_path) -> None:
+    generator = _StaticTitleGenerator("PBMC 细胞类型快速检查")
+    coordinator = _coordinator(
+        runtime,
+        tmp_path,
+        _layer(),
+        lambda: SharedScriptModel(deque([AIMessage(content="检查完成。")])),
+        title_generator=generator,
+    )
+    conversation = await coordinator.create_conversation(title=None)
+
+    run = await coordinator.submit_run(
+        conversation_id=conversation.id,
+        goal="请帮我检查这份 PBMC 数据并说明适合哪些后续分析",
+    )
+    await coordinator.wait(run.id)
+
+    async with runtime.unit_of_work() as unit_of_work:
+        repositories = unit_of_work.repositories
+        assert repositories is not None
+        stored = await repositories.conversations.get(conversation.id)
+    assert stored is not None
+    assert stored.title == "PBMC 细胞类型快速检查"
+    assert generator.goals == ["请帮我检查这份 PBMC 数据并说明适合哪些后续分析"]
+    await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_explicit_title_is_preserved_and_generator_is_not_called(
+    runtime,
+    tmp_path,
+) -> None:
+    generator = _StaticTitleGenerator("不应覆盖")
+    coordinator = _coordinator(
+        runtime,
+        tmp_path,
+        _layer(),
+        lambda: SharedScriptModel(deque([AIMessage(content="完成。")])),
+        title_generator=generator,
+    )
+    conversation = await coordinator.create_conversation(title="我的 PBMC 课题")
+
+    run = await coordinator.submit_run(
+        conversation_id=conversation.id,
+        goal="解释 Marker Gene 的作用",
+    )
+    await coordinator.wait(run.id)
+
+    async with runtime.unit_of_work() as unit_of_work:
+        repositories = unit_of_work.repositories
+        assert repositories is not None
+        stored = await repositories.conversations.get(conversation.id)
+    assert stored is not None
+    assert stored.title == "我的 PBMC 课题"
+    assert generator.goals == []
+    await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_title_generator_failure_uses_fallback_and_run_still_completes(
+    runtime,
+    tmp_path,
+) -> None:
+    coordinator = _coordinator(
+        runtime,
+        tmp_path,
+        _layer(),
+        lambda: SharedScriptModel(deque([AIMessage(content="解释完成。")])),
+        title_generator=_FailingTitleGenerator(),
+    )
+    conversation = await coordinator.create_conversation(title="新分析对话")
+
+    run = await coordinator.submit_run(
+        conversation_id=conversation.id,
+        goal="请解释为什么聚类后还需要 Marker Gene",
+    )
+    await coordinator.wait(run.id)
+
+    async with runtime.unit_of_work() as unit_of_work:
+        repositories = unit_of_work.repositories
+        assert repositories is not None
+        stored_conversation = await repositories.conversations.get(conversation.id)
+        stored_run = await repositories.runs.get(run.id)
+    assert stored_conversation is not None
+    assert stored_conversation.title == "解释为什么聚类后还需要 Marker Gene"
+    assert stored_run is not None
+    assert stored_run.status == RunStatus.COMPLETED.value
+    await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_invalid_generated_title_uses_fallback_and_run_still_completes(
+    runtime,
+    tmp_path,
+) -> None:
+    coordinator = _coordinator(
+        runtime,
+        tmp_path,
+        _layer(),
+        lambda: SharedScriptModel(deque([AIMessage(content="解释完成。")])),
+        title_generator=_InvalidTitleGenerator(),
+    )
+    conversation = await coordinator.create_conversation()
+
+    run = await coordinator.submit_run(
+        conversation_id=conversation.id,
+        goal="请解释为什么聚类后还需要 Marker Gene",
+    )
+    await coordinator.wait(run.id)
+
+    async with runtime.unit_of_work() as unit_of_work:
+        repositories = unit_of_work.repositories
+        assert repositories is not None
+        stored_conversation = await repositories.conversations.get(conversation.id)
+        stored_run = await repositories.runs.get(run.id)
+    assert stored_conversation is not None
+    assert stored_conversation.title == "解释为什么聚类后还需要 Marker Gene"
+    assert stored_run is not None
+    assert stored_run.status == RunStatus.COMPLETED.value
+    await coordinator.close()
+
+
 @pytest.mark.asyncio
 async def test_coordinator_persists_ordered_terminal_lifecycle(runtime, tmp_path) -> None:
-    responses = deque([_finish("complete")])
+    responses = deque([AIMessage(content="complete")])
     coordinator = _coordinator(
         runtime,
         tmp_path,
@@ -433,10 +663,19 @@ async def test_coordinator_persists_ordered_terminal_lifecycle(runtime, tmp_path
         assert stored.status == RunStatus.COMPLETED.value
         assert stored.started_at is not None
         assert stored.finished_at is not None
+        tasks = await repositories.tasks.list_for_run(
+            run.id,
+            conversation_id=conversation.id,
+        )
         rows = await repositories.events.replay(run.id, limit=500)
+    assert tasks == []
     assert [row.sequence for row in rows] == list(range(1, len(rows) + 1))
     assert rows[-1].event_type == "run.completed"
     assert sum(row.event_type == "run.completed" for row in rows) == 1
+    assert not any(
+        row.event_type in {"task.created", "task.updated"}
+        for row in rows
+    )
     user_messages = [
         row for row in rows if row.event_type == "message.completed"
         and row.payload.get("role") == "user"
@@ -448,6 +687,54 @@ async def test_coordinator_persists_ordered_terminal_lifecycle(runtime, tmp_path
     page = await coordinator.event_log.replay(run.id, after_sequence=0)
     assert page.terminal is True
     assert page.events[-1].type.value == "run.completed"
+    await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_single_tool_run_persists_only_capability_task(runtime, tmp_path) -> None:
+    handler = EchoCapability()
+    responses = deque(
+        [
+            _echo("checked"),
+            AIMessage(content="检查完成。"),
+        ]
+    )
+    coordinator = _coordinator(
+        runtime,
+        tmp_path,
+        _layer(handler),
+        lambda: SharedScriptModel(responses),
+    )
+    conversation = await coordinator.create_conversation(title="single tool")
+    run = await coordinator.submit_run(
+        conversation_id=conversation.id,
+        goal="检查受控输入",
+    )
+    await coordinator.wait(run.id)
+
+    async with runtime.unit_of_work() as unit_of_work:
+        repositories = unit_of_work.repositories
+        assert repositories is not None
+        stored = await repositories.runs.get(run.id)
+        tasks = await repositories.tasks.list_for_run(
+            run.id,
+            conversation_id=conversation.id,
+        )
+        rows = await repositories.events.replay(run.id, limit=500)
+
+    assert stored is not None and stored.status == RunStatus.COMPLETED.value
+    assert handler.calls == 1
+    assert len(tasks) == 1
+    assert tasks[0].capability_name == "echo_tool"
+    assert tasks[0].status == TaskStatus.COMPLETED.value
+    assert not any(row.event_type == "task.created" for row in rows)
+    assert rows[-1].event_type == "run.completed"
+    assert any(
+        row.event_type == "message.completed"
+        and row.payload.get("role") == "assistant"
+        and row.payload.get("content") == "检查完成。"
+        for row in rows
+    )
     await coordinator.close()
 
 
@@ -483,9 +770,7 @@ async def test_unclassified_failure_is_redacted_from_public_run_surfaces(
 
     assert stored is not None and stored.status == RunStatus.FAILED.value
     assert stored.error_summary == "运行执行失败；详细诊断仅保留在服务端日志。"
-    assert len(tasks) == 1
-    assert tasks[0].status == TaskStatus.FAILED.value
-    assert tasks[0].error_summary == stored.error_summary
+    assert tasks == []
     assert rows[-1].event_type == "run.failed"
     assert rows[-1].payload == {
         "status": "failed",
@@ -545,16 +830,22 @@ async def test_capability_failure_event_redacts_internal_exception_text(
     replay = await coordinator.event_log.replay(run.id, after_sequence=0)
     failed = [event for event in replay.events if event.type.value == "capability.failed"]
     assert len(failed) == 1
-    assert failed[0].payload.error_code == "capability_execution_failed"
+    assert failed[0].payload.error_code == "capability_internal_error"
     assert failed[0].payload.error_summary == (
         "能力执行失败；详细诊断仅保留在服务端日志。"
     )
     capability_task = next(task for task in tasks if task.capability_name == "echo_tool")
     assert capability_task.status == TaskStatus.FAILED.value
     assert capability_task.error_summary == failed[0].payload.error_summary
-    assert model.tool_feedback == (
-        "Tool 执行失败：能力执行失败；详细诊断仅保留在服务端日志。"
-    )
+    tool_feedback = json.loads(model.tool_feedback)
+    assert tool_feedback == {
+        "status": "failed",
+        "capability": "echo_tool",
+        "summary": "能力执行失败；详细诊断仅保留在服务端日志。",
+        "error_code": "capability_internal_error",
+        "retryable": False,
+        "recovery_hint": "不要重复相同调用；选择其他能力或向用户说明限制。",
+    }
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
@@ -576,6 +867,59 @@ async def test_capability_failure_event_redacts_internal_exception_text(
     assert "checker-secret" not in public_payload
     assert "/Users/example/private" not in public_payload
     assert "RuntimeError" not in public_payload
+    await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_aborted_capability_is_non_success_in_task_event_and_agent_feedback(
+    runtime,
+    tmp_path,
+) -> None:
+    model = AbortedCapabilityModel()
+    coordinator = _coordinator(
+        runtime,
+        tmp_path,
+        _layer(AbortedCapability()),
+        lambda: model,
+    )
+    conversation = await coordinator.create_conversation(
+        title="aborted capability consistency"
+    )
+    run = await coordinator.submit_run(
+        conversation_id=conversation.id,
+        goal="run a capability that returns aborted",
+    )
+    await coordinator.wait(run.id)
+
+    async with runtime.unit_of_work() as unit_of_work:
+        repositories = unit_of_work.repositories
+        assert repositories is not None
+        tasks = await repositories.tasks.list_for_run(
+            run.id,
+            conversation_id=conversation.id,
+        )
+    replay = await coordinator.event_log.replay(
+        run.id,
+        after_sequence=0,
+    )
+    completed = [
+        event
+        for event in replay.events
+        if event.type.value == "capability.completed"
+    ]
+    capability_task = next(
+        task for task in tasks if task.capability_name == "aborted_tool"
+    )
+    feedback = json.loads(model.tool_feedback or "{}")
+
+    assert len(completed) == 1
+    assert completed[0].payload.result_status == "aborted"
+    assert capability_task.status == TaskStatus.FAILED.value
+    assert capability_task.error_summary == (
+        "能力调用已结束，但没有达到可作为完成证据的科学终态。"
+    )
+    assert feedback["status"] == "failed"
+    assert feedback["error_code"] == "capability_not_completed"
     await coordinator.close()
 
 
@@ -780,11 +1124,7 @@ async def test_marked_start_without_checkpoint_reconciles_to_start(
         and payload.get("role") == "assistant"
         for payload in assistant_messages
     ), assistant_messages
-    assert any(
-        event.event_type == "task.updated"
-        and event.payload.get("status") == TaskStatus.COMPLETED.value
-        for event in events
-    )
+    assert not any(event.event_type == "task.updated" for event in events)
     assert all(
         event.payload.get("content") != "prior run completed"
         for event in events
@@ -1067,12 +1407,12 @@ async def test_lease_recovery_reaps_real_docker_claim_before_agent_execution(
 
 
 @pytest.mark.asyncio
-async def test_each_run_routes_only_its_selected_dataset_through_graph_a(
+async def test_each_run_routes_only_its_selected_dataset_to_exploratory_analysis(
     runtime,
     tmp_path,
 ) -> None:
-    graph = ControlledGraphA()
-    capability = SingleCellAnalysisCapability(
+    graph = ControlledExploratoryEngine()
+    capability = ExploratoryAnalysisCapability(
         graph_factory=lambda: graph,
         scope_factory=lambda _workspace: nullcontext(),
     )
@@ -1081,10 +1421,10 @@ async def test_each_run_routes_only_its_selected_dataset_through_graph_a(
     skills = SkillCatalog()
     skills.register(
         SkillDefinition(
-            name="single-cell-analysis",
-            description="Controlled Graph A integration skill.",
+            name="exploratory-analysis",
+            description="Controlled exploratory analysis integration skill.",
             tools=(capability.spec.name,),
-            content="使用 single_cell_analysis 处理已选择的数据集。",
+            content="仅在标准 Tool 无法覆盖时使用探索性分析。",
         )
     )
     models: list[ArtifactRoutingModel] = []
@@ -1100,7 +1440,9 @@ async def test_each_run_routes_only_its_selected_dataset_through_graph_a(
         DomainCapabilityLayer(registry=registry, skills=skills),
         model_factory,
     )
-    conversation = await coordinator.create_conversation(title="graph-a routing")
+    conversation = await coordinator.create_conversation(
+        title="exploratory routing"
+    )
     first_dataset = await coordinator.import_artifact(
         conversation.id,
         source=io.BytesIO(b"first-controlled-h5ad"),
@@ -1110,7 +1452,7 @@ async def test_each_run_routes_only_its_selected_dataset_through_graph_a(
     )
     first_run = await coordinator.submit_run(
         conversation_id=conversation.id,
-        goal="使用第一份数据运行 Graph A",
+        goal="使用第一份数据运行探索性分析",
         input_artifact_ids=[first_dataset.id],
     )
     await coordinator.wait(first_run.id)
@@ -1124,7 +1466,7 @@ async def test_each_run_routes_only_its_selected_dataset_through_graph_a(
     )
     second_run = await coordinator.submit_run(
         conversation_id=conversation.id,
-        goal="使用第二份数据运行 Graph A",
+        goal="使用第二份数据运行探索性分析",
         input_artifact_ids=[second_dataset.id],
     )
     await coordinator.wait(second_run.id)
@@ -1828,15 +2170,13 @@ async def test_heartbeat_failure_cancels_execution_before_terminal_failure(runti
     assert failed is not None and failed.status == RunStatus.FAILED.value
     assert failed.worker_id is None and failed.lease_expires_at is None
     assert failed.error_summary == "运行心跳失败；详细诊断仅保留在服务端日志。"
-    assert len(tasks) == 1
-    assert tasks[0].error_summary == failed.error_summary
+    assert tasks == []
     assert events[-1].event_type == "run.failed"
     assert events[-1].payload["error_code"] == "run_heartbeat_failed"
     assert events[-1].payload["error_summary"] == failed.error_summary
     public_payload = json.dumps(
         {
             "run_error": failed.error_summary,
-            "task_error": tasks[0].error_summary,
             "events": [event.payload for event in events],
         },
         ensure_ascii=False,

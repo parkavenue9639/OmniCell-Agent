@@ -5,8 +5,8 @@ import type {
   Run,
 } from "../api";
 import type {
+  ActivityProcessState,
   ArtifactViewModel,
-  CapabilityViewModel,
   ConnectionState,
   ConversationWorkspaceViewModel,
   EventViewModel,
@@ -14,6 +14,8 @@ import type {
   RunState,
   TaskViewModel,
   TimelineItem,
+  ToolExecutionViewModel,
+  ToolFamily,
   WorkItemState,
 } from "../features/conversations";
 import type { RunProjection } from "../projector/model";
@@ -37,6 +39,7 @@ const WORK_LABELS: Record<WorkItemState, string> = {
   review_required: "等待审核",
   completed: "已完成",
   failed: "失败",
+  interrupted: "未收敛",
   cancelled: "已取消",
 };
 
@@ -105,22 +108,49 @@ function artifactName(artifact: Artifact): string {
     : `${artifact.kind} · ${artifact.artifact_id.slice(0, 8)}`;
 }
 
-function capabilityFamily(
-  name: string,
-): "graph_a" | "graph_b" | "tool" {
-  if (name === "single_cell_analysis") return "graph_a";
-  if (name === "deep_cell_annotation") return "graph_b";
-  return "tool";
+function toolFamily(name: string): ToolFamily {
+  const families: Record<string, ToolFamily> = {
+    inspect_dataset: "inspect",
+    inspect_marker_table: "inspect",
+    quality_control: "transform",
+    normalize_expression: "transform",
+    cluster_cells: "analyze",
+    find_marker_genes: "analyze",
+    annotate_cell_clusters: "annotate",
+    plot_pca_clusters: "visualize",
+    run_exploratory_analysis: "custom",
+  };
+  return families[name] ?? "custom";
 }
 
-function capabilityTitle(name: string): string {
+function toolTitle(name: string): string {
   const labels: Record<string, string> = {
-    single_cell_analysis: "单细胞分析工作流",
-    deep_cell_annotation: "深度细胞类型注释",
-    inspect_single_cell_context: "检查单细胞上下文",
-    inspect_marker_contract: "检查 Marker Contract",
+    inspect_dataset: "检查当前数据集",
+    quality_control: "单细胞质量控制",
+    normalize_expression: "表达矩阵归一化",
+    cluster_cells: "降维与细胞聚类",
+    find_marker_genes: "Marker gene 分析",
+    plot_pca_clusters: "PCA 聚类可视化",
+    inspect_marker_table: "检查 Marker table",
+    annotate_cell_clusters: "细胞类型注释",
+    run_exploratory_analysis: "开放式探索分析",
   };
   return labels[name] ?? name;
+}
+
+function toolPurpose(name: string): string {
+  const labels: Record<string, string> = {
+    inspect_dataset: "读取物种、组织、疾病状态和任务类型",
+    inspect_marker_table: "校验 marker table 并读取 cluster 与 marker 摘要",
+    quality_control: "过滤低质量细胞和低表达基因",
+    normalize_expression: "归一化表达矩阵并执行 log1p",
+    cluster_cells: "执行 PCA、邻居图与 Leiden 聚类",
+    find_marker_genes: "提取各 cluster 的显著 marker gene",
+    plot_pca_clusters: "生成带 cluster 标签的 PCA 散点图",
+    annotate_cell_clusters: "完成 cluster 注释、验证、评分和报告",
+    run_exploratory_analysis: "在受控环境中完成非标准分析目标",
+  };
+  return labels[name] ?? "执行已注册的科学 Tool";
 }
 
 function skillResourceLabel(
@@ -155,20 +185,23 @@ function eventSummary(type: string | undefined): string {
     "run.created": "运行已创建",
     "run.started": "运行开始执行",
     "agent.turn_started": "Agent 开始新一轮推理",
+    "agent.tool_started": "Agent 发起 Tool 调用",
+    "agent.tool_completed": "Agent Tool 调用完成",
+    "agent.tool_failed": "Agent Tool 调用被拒绝或失败",
     "message.completed": "消息已持久化",
     "task.created": "任务已创建",
     "task.updated": "任务状态已更新",
     "skill.load_started": "Skill 资源开始加载",
     "skill.load_completed": "Skill 资源加载完成",
     "skill.load_failed": "Skill 资源加载失败",
-    "capability.started": "能力调用开始",
-    "capability.retrying": "能力调用准备重试",
-    "capability.progress": "能力仍在执行",
-    "capability.completed": "能力调用已返回",
-    "capability.failed": "能力调用失败",
-    "runtime.command_started": "容器命令开始执行",
-    "runtime.output": "容器产生执行输出",
-    "runtime.command_completed": "容器命令执行结束",
+    "capability.started": "Tool 调用开始",
+    "capability.retrying": "Tool 准备重试",
+    "capability.progress": "Tool 正在执行",
+    "capability.completed": "Tool 调用完成",
+    "capability.failed": "Tool 调用失败",
+    "runtime.command_started": "Backend 命令开始执行",
+    "runtime.output": "Backend 产生执行输出",
+    "runtime.command_completed": "Backend 命令执行结束",
     "artifact.created": "产物已登记",
     "review.requested": "需要人工审核",
     "review.resolved": "审核已处理",
@@ -183,10 +216,20 @@ function eventSummary(type: string | undefined): string {
 }
 
 function eventTone(
-  type: string | undefined,
+  event: PersistedEvent,
 ): "neutral" | "active" | "success" | "warning" | "danger" {
+  const type = event.type;
+  if (
+    type === "capability.completed" &&
+    event.payload.result_status !== null &&
+    event.payload.result_status !== undefined &&
+    event.payload.result_status !== "completed"
+  ) {
+    return "warning";
+  }
   if (
     type === "skill.load_failed" ||
+    type === "agent.tool_failed" ||
     type === "capability.failed" ||
     type === "run.failed"
   ) {
@@ -203,6 +246,7 @@ function eventTone(
   if (
     type === "run.completed" ||
     type === "skill.load_completed" ||
+    type === "agent.tool_completed" ||
     type === "capability.completed" ||
     type === "artifact.created" ||
     type === "review.resolved"
@@ -212,6 +256,7 @@ function eventTone(
   if (
     type === "run.started" ||
     type === "agent.turn_started" ||
+    type === "agent.tool_started" ||
     type === "skill.load_started" ||
     type === "capability.started" ||
     type === "capability.retrying" ||
@@ -256,6 +301,18 @@ function eventMetadata(event: PersistedEvent): EventViewModel["metadata"] {
       append("turn_index", payload.turn_index);
       append("remaining_turns", payload.remaining_turns);
       break;
+    case "agent.tool_started":
+    case "agent.tool_completed":
+    case "agent.tool_failed":
+      append("tool_call_id", payload.tool_call_id);
+      append("tool_name", payload.tool_name);
+      append("category", payload.category);
+      append("summary", payload.summary);
+      append("error_code", payload.error_code);
+      append("error_summary", payload.error_summary);
+      append("retryable", payload.retryable);
+      append("recovery_hint", payload.recovery_hint);
+      break;
     case "message.completed":
       append("message_id", payload.message_id);
       append("role", payload.role);
@@ -278,6 +335,8 @@ function eventMetadata(event: PersistedEvent): EventViewModel["metadata"] {
       append("skill_name", payload.skill_name);
       append("resource_kind", payload.resource_kind);
       append("resource_name", payload.resource_name);
+      append("skill_version", payload.skill_version);
+      append("resource_sha256", payload.resource_sha256);
       append("purpose", payload.purpose);
       append("outcome", payload.outcome);
       append("content_bytes", payload.content_bytes);
@@ -377,6 +436,7 @@ function eventMetadata(event: PersistedEvent): EventViewModel["metadata"] {
 function eventContext(event: PersistedEvent): string | undefined {
   const payload = event.payload as unknown as Record<string, unknown>;
   const value =
+    payload.tool_name ??
     payload.capability_name ??
     payload.skill_name ??
     payload.error_code ??
@@ -409,6 +469,40 @@ function previewForArtifact(
     return { mode: "text" };
   }
   return { mode: "none", reason: "该类型不在安全内联预览列表中" };
+}
+
+function elapsedLabel(
+  startedAt: string,
+  completedAt: string | undefined,
+): string | undefined {
+  if (completedAt === undefined) return undefined;
+  const started = new Date(startedAt).valueOf();
+  const completed = new Date(completedAt).valueOf();
+  if (!Number.isFinite(started) || !Number.isFinite(completed)) {
+    return undefined;
+  }
+  const milliseconds = Math.max(completed - started, 0);
+  return milliseconds < 1_000
+    ? `${milliseconds} ms`
+    : `${(milliseconds / 1_000).toFixed(2)} s`;
+}
+
+function resultOrFallback(
+  name: string,
+  summary: string | null | undefined,
+  artifactCount: number,
+): string {
+  const normalized = summary?.trim();
+  const genericSummaries = new Set([
+    "能力调用已返回",
+    "能力调用已完成",
+    "工作流已完成",
+    `${name} 已完成`,
+  ]);
+  if (normalized && !genericSummaries.has(normalized)) return normalized;
+  const artifactSummary =
+    artifactCount > 0 ? `，生成 ${artifactCount} 个 Artifact` : "";
+  return `${toolTitle(name)}已完成${artifactSummary}`;
 }
 
 function runTimeline(
@@ -447,37 +541,167 @@ function runTimeline(
       const latest = projection.capabilities[event.payload.capability_call_id];
       const name = event.payload.capability_name;
       const state = workState(latest?.status ?? "running");
+      const relatedEvents = projection.events.filter((candidate) => {
+        if (
+          candidate.type !== "capability.started" &&
+          candidate.type !== "capability.retrying" &&
+          candidate.type !== "capability.progress" &&
+          candidate.type !== "capability.completed" &&
+          candidate.type !== "capability.failed"
+        ) {
+          return false;
+        }
+        return (
+          candidate.payload.capability_call_id ===
+          event.payload.capability_call_id
+        );
+      });
+      const terminalEvent = [...relatedEvents]
+        .reverse()
+        .find(
+          (candidate) =>
+            candidate.type === "capability.completed" ||
+            candidate.type === "capability.failed",
+        );
+      const latestProgress = [...relatedEvents]
+        .reverse()
+        .find((candidate) => candidate.type === "capability.progress");
+      const retryCount = relatedEvents.filter(
+        (candidate) => candidate.type === "capability.retrying",
+      ).length;
+      const backendOperations = Object.values(
+        projection.runtimeCommands,
+      ).filter(
+        (runtime) =>
+          runtime.capabilityCallId === event.payload.capability_call_id,
+      );
+      const backendRunning = backendOperations.some(
+        (runtime) => runtime.status === "running",
+      );
+      const process: Array<{
+        label: string;
+        detail?: string;
+        state: ActivityProcessState;
+      }> = [
+        {
+          label: "发起 Tool 调用",
+          detail: `第 ${latest?.attempt ?? event.payload.attempt ?? 1} 次执行`,
+          state: "completed",
+        },
+      ];
+      if (retryCount > 0) {
+        process.push({
+          label: "执行受控重试",
+          detail: `已重试 ${retryCount} 次`,
+          state: state === "running" ? "active" : "completed",
+        });
+      }
+      if (backendOperations.length > 0) {
+        process.push({
+          label: "执行 Backend 操作",
+          detail: `${backendOperations.length} 条命令，详见后续 Backend 卡片`,
+          state: backendRunning
+            ? "active"
+            : backendOperations.some((runtime) => runtime.status !== "completed")
+              ? "failed"
+              : "completed",
+        });
+      } else if (latestProgress?.type === "capability.progress") {
+        process.push({
+          label: latestProgress.payload.message,
+          detail:
+            latestProgress.payload.total === null ||
+            latestProgress.payload.total === undefined
+              ? `进度 ${latestProgress.payload.current}`
+              : `进度 ${latestProgress.payload.current}/${latestProgress.payload.total}`,
+          state: terminalEvent ? "completed" : "active",
+        });
+      } else if (!terminalEvent) {
+        process.push({
+          label: "执行 Tool",
+          detail: toolPurpose(name),
+          state: "active",
+        });
+      }
+      process.push({
+        label:
+          state === "failed"
+            ? "Tool 调用失败"
+            : terminalEvent
+              ? "Tool 返回结果"
+              : "等待 Tool 返回",
+        detail:
+          state === "failed"
+            ? (latest?.errorSummary ?? "未返回可用结果")
+            : terminalEvent
+              ? `${latest?.artifactIds.length ?? 0} 个已登记 Artifact`
+              : undefined,
+        state:
+          state === "failed"
+            ? "failed"
+            : terminalEvent
+              ? "completed"
+              : "pending",
+      });
+      const stateLabel = {
+        pending: "等待调用",
+        running: "调用中",
+        review_required: "等待审核",
+        completed: "调用完成",
+        failed: "调用失败",
+        interrupted: "未收敛",
+        cancelled: "已取消",
+      }[state];
       items.push({
         id: event.event_id,
-        kind: "capability",
-        capability: name,
-        family: capabilityFamily(name),
-        title: capabilityTitle(name),
-        description: "Agent 按当前任务上下文调用结构化领域能力。",
+        kind: "tool",
+        toolName: name,
+        family: toolFamily(name),
+        title: toolTitle(name),
+        purpose: toolPurpose(name),
         state,
-        stateLabel: WORK_LABELS[state],
+        stateLabel,
+        attempt: latest?.attempt ?? event.payload.attempt ?? 1,
+        durationLabel: elapsedLabel(
+          event.occurred_at,
+          terminalEvent?.occurred_at,
+        ),
+        process,
         occurredAtLabel: when,
-        resultSummary: latest?.summary ?? latest?.errorSummary ?? undefined,
-        progressLabel: latest?.progressMessage
-          ? `${latest.progressMessage} · #${latest.progressCurrent ?? 0}`
-          : undefined,
+        resultSummary:
+          state === "failed"
+            ? (latest?.errorSummary ?? undefined)
+            : terminalEvent
+              ? resultOrFallback(
+                  name,
+                  latest?.summary,
+                  latest?.artifactIds.length ?? 0,
+                )
+              : undefined,
+        artifactCount: latest?.artifactIds.length ?? 0,
       });
     } else if (event.type === "task.created") {
-      const latest = projection.tasks[event.payload.task_id];
-      const state = workState(latest?.status ?? event.payload.status);
+      const state = workState(event.payload.status ?? "pending");
       items.push({
         id: event.event_id,
         kind: "task",
         title: event.payload.title,
+        description: event.payload.description ?? undefined,
+        capability: event.payload.capability_name ?? undefined,
+        state,
+        stateLabel: WORK_LABELS[state],
+        occurredAtLabel: when,
+      });
+    } else if (event.type === "task.updated") {
+      const latest = projection.tasks[event.payload.task_id];
+      const state = workState(event.payload.status);
+      items.push({
+        id: event.event_id,
+        kind: "task",
+        title: latest?.title ?? `任务 ${event.payload.task_id.slice(0, 8)}`,
         description:
-          latest?.summary ??
-          latest?.description ??
-          event.payload.description ??
-          undefined,
-        capability:
-          latest?.capabilityName ??
-          event.payload.capability_name ??
-          undefined,
+          event.payload.summary ?? latest?.description ?? undefined,
+        capability: latest?.capabilityName ?? undefined,
         state,
         stateLabel: WORK_LABELS[state],
         occurredAtLabel: when,
@@ -497,6 +721,14 @@ function runTimeline(
             ? "该资源已在当前上下文中，直接复用"
             : `已加载 ${sizeLabel(latest.contentBytes ?? 0)} 方法上下文`
           : latest.errorSummary ?? undefined;
+      const terminalEvent = [...projection.events]
+        .reverse()
+        .find(
+          (candidate) =>
+            (candidate.type === "skill.load_completed" ||
+              candidate.type === "skill.load_failed") &&
+            candidate.payload.skill_load_id === event.payload.skill_load_id,
+        );
       items.push({
         id: event.event_id,
         kind: "skill",
@@ -508,6 +740,37 @@ function runTimeline(
         purposeLabel: skillPurposeLabel(latest.purpose),
         state: latest.status,
         stateLabel,
+        process: [
+          {
+            label:
+              latest.outcome === "already_loaded"
+                ? "检查当前 Run 方法上下文"
+                : `读取 ${skillResourceLabel(
+                    latest.resourceKind,
+                    latest.resourceName,
+                  )}`,
+            detail: skillPurposeLabel(latest.purpose),
+            state: terminalEvent ? "completed" : "active",
+          },
+          {
+            label:
+              latest.status === "failed"
+                ? "Skill 加载失败"
+                : terminalEvent
+                  ? "更新当前 Run 方法上下文"
+                  : "等待 Skill 加载完成",
+            detail:
+              latest.status === "completed" && latest.skillVersion
+                ? `版本 ${latest.skillVersion}`
+                : latest.errorCode ?? undefined,
+            state:
+              latest.status === "failed"
+                ? "failed"
+                : terminalEvent
+                  ? "completed"
+                  : "pending",
+          },
+        ],
         resultSummary,
         occurredAtLabel: when,
       });
@@ -519,7 +782,7 @@ function runTimeline(
         id: event.event_id,
         kind: "runtime",
         runtimeCommandId: latest.runtimeCommandId,
-        capability: latest.capabilityName,
+        toolName: latest.capabilityName,
         backend: latest.backend,
         command: latest.command,
         code: latest.code ?? undefined,
@@ -536,6 +799,43 @@ function runTimeline(
         stdoutTruncated: latest.stdoutTruncated,
         stderrTruncated: latest.stderrTruncated,
         redacted: latest.redacted,
+        process: [
+          {
+            label: "启动 Backend 命令",
+            detail: latest.backend,
+            state: latest.status === "running" ? "active" : "completed",
+          },
+          ...(latest.stdout || latest.stderr
+            ? [
+                {
+                  label: "接收执行输出",
+                  detail: `stdout ${latest.stdout.length} 字符 · stderr ${latest.stderr.length} 字符`,
+                  state:
+                    latest.status === "running"
+                      ? ("active" as const)
+                      : ("completed" as const),
+                },
+              ]
+            : []),
+          {
+            label:
+              latest.status === "running"
+                ? "等待命令结束"
+                : latest.status === "completed"
+                  ? "Backend 操作完成"
+                  : "Backend 操作未完成",
+            detail:
+              latest.exitCode === null
+                ? undefined
+                : `退出码 ${latest.exitCode}`,
+            state:
+              latest.status === "running"
+                ? "pending"
+                : latest.status === "completed"
+                  ? "completed"
+                  : "failed",
+          },
+        ],
         occurredAtLabel: when,
       });
     } else if (event.type === "artifact.created") {
@@ -619,6 +919,7 @@ function taskModels(projection: RunProjection | undefined): TaskViewModel[] {
     const state = workState(task.status);
     return {
       id: task.taskId,
+      runId: projection.runId,
       title: task.title,
       description: task.summary ?? task.description ?? undefined,
       state,
@@ -627,19 +928,27 @@ function taskModels(projection: RunProjection | undefined): TaskViewModel[] {
   });
 }
 
-function capabilityModels(
+function toolExecutionModels(
   projection: RunProjection | undefined,
-): CapabilityViewModel[] {
+): ToolExecutionViewModel[] {
   if (projection === undefined) return [];
   return Object.values(projection.capabilities).map((capability) => {
     const state = workState(capability.status);
     return {
       id: capability.capabilityCallId,
+      runId: projection.runId,
       name: capability.capabilityName,
-      family: capabilityFamily(capability.capabilityName),
-      title: capabilityTitle(capability.capabilityName),
+      family: toolFamily(capability.capabilityName),
+      title: toolTitle(capability.capabilityName),
       description:
-        capability.summary ?? capability.errorSummary ?? "等待结构化结果",
+        capability.errorSummary ??
+        (capability.status === "completed"
+          ? resultOrFallback(
+              capability.capabilityName,
+              capability.summary,
+              capability.artifactIds.length,
+            )
+          : capability.summary ?? toolPurpose(capability.capabilityName)),
       state,
       stateLabel: WORK_LABELS[state],
       invocationCount: capability.attempt,
@@ -657,6 +966,7 @@ function reviewModels(
     const status = projected?.status ?? review.status;
     return {
       id: review.review_id,
+      runId: review.run_id ?? undefined,
       title: "人工审核",
       description: review.prompt,
       capabilityLabel: "Agent Tool Policy",
@@ -678,6 +988,7 @@ function artifactModels(
 ): ArtifactViewModel[] {
   return artifacts.map((artifact) => ({
     id: artifact.artifact_id,
+    runId: artifact.run_id ?? undefined,
     name: artifactName(artifact),
     kindLabel: artifact.kind,
     sizeLabel: sizeLabel(artifact.size_bytes),
@@ -691,13 +1002,14 @@ function eventModels(projection: RunProjection | undefined): EventViewModel[] {
   if (projection === undefined) return [];
   return projection.events.map((event) => ({
     id: event.event_id,
+    runId: projection.runId,
     sequence: event.sequence,
     type: event.type ?? "unknown",
     occurredAtLabel: dateLabel(event.occurred_at),
     occurredAtIso: event.occurred_at,
     summary: eventSummary(event.type),
     context: eventContext(event),
-    tone: eventTone(event.type),
+    tone: eventTone(event),
     metadata: eventMetadata(event),
   }));
 }
@@ -766,7 +1078,7 @@ export function buildConversationViewModel(
     connectionLabel: connection.label,
     conversations: options.conversations.map((conversation) => ({
       id: conversation.conversation_id,
-      title: conversation.title ?? "未命名对话",
+      title: conversation.title ?? "新分析对话",
       updatedAtLabel: dateLabel(conversation.updated_at),
     })),
     selectedConversationId: options.selectedConversation?.conversation_id,
@@ -777,10 +1089,10 @@ export function buildConversationViewModel(
       sizeLabel: sizeLabel(artifact.size_bytes),
     })),
     selectedDatasetId: selectedId ?? undefined,
-    title: options.selectedConversation?.title ?? "开始新的单细胞分析",
+    title: options.selectedConversation?.title ?? "新分析对话",
     subtitle: options.run
       ? `Run ${options.run.run_id.slice(0, 8)} · sequence ${options.projection?.appliedSequence ?? options.run.last_sequence}`
-      : "选择数据集并描述目标，Agent 会按需调用 Graph A、Graph B 或领域 Tool。",
+      : "选择数据集并描述目标，Agent 会按需直接回答、加载 Skill 或调用 Tool。",
     run: options.run
       ? {
           id: options.run.run_id,
@@ -801,8 +1113,8 @@ export function buildConversationViewModel(
       options.artifacts,
     ),
     tasks: projections.flatMap((projection) => taskModels(projection)),
-    capabilities: projections.flatMap((projection) =>
-      capabilityModels(projection),
+    toolExecutions: projections.flatMap((projection) =>
+      toolExecutionModels(projection),
     ),
     reviews: reviewModels(
       options.reviews,

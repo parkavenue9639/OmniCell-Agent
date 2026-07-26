@@ -39,7 +39,8 @@ from omnicell_agent.capabilities.bootstrap import DomainCapabilityLayer  # noqa:
 from omnicell_agent.capabilities.catalog import SkillCatalog, SkillDefinition  # noqa: E402
 from omnicell_agent.capabilities.contracts import (  # noqa: E402
     ArtifactRef,
-    CapabilityKind,
+    CapabilityEffect,
+    CapabilityMode,
     CapabilityRequest,
     CapabilitySpec,
 )
@@ -63,7 +64,8 @@ class GenerateReportResult(BaseModel):
 class GenerateReportCapability:
     spec = CapabilitySpec(
         name="generate_live_report",
-        kind=CapabilityKind.ATOMIC,
+        mode=CapabilityMode.ATOMIC,
+        effect=CapabilityEffect.CUSTOM,
         description="生成用于真实产品闭环测试的确定性分析报告。",
         prompt_hint="仅在真实闭环测试要求生成报告时调用。",
     )
@@ -87,26 +89,12 @@ class GenerateReportCapability:
         return GenerateReportResult(report=report)
 
 
-def _finish(final_response: str) -> AIMessage:
-    return AIMessage(
-        content="",
-        tool_calls=[
-            {
-                "name": "finish_task",
-                "args": {"final_response": final_response},
-                "id": "live-e2e-finish",
-                "type": "tool_call",
-            }
-        ],
-    )
-
-
 def _input_dataset(messages: list[object]) -> dict[str, object]:
     for message in messages:
         if not isinstance(message, SystemMessage):
             continue
         content = str(message.content)
-        if "输入 artifact 权威描述" not in content:
+        if "本次 run 已通过 ownership 校验的输入 artifact 句柄" not in content:
             continue
         descriptors = json.loads(content.split("：\n", 1)[1])
         if not isinstance(descriptors, list) or len(descriptors) != 1:
@@ -148,15 +136,29 @@ class ControlledLiveModel:
         )
         if "受控阻塞" in goal:
             await asyncio.Event().wait()
+        if "marker gene" in goal:
+            return AIMessage(
+                content=(
+                    "聚类只把表达模式相近的细胞分成群，并不会自动说明每个群的"
+                    "生物学身份。marker gene 可以揭示各群的特征表达，帮助进行"
+                    "细胞类型注释并检查聚类是否具有生物学意义。"
+                )
+            )
         if any(isinstance(message, ToolMessage) for message in messages):
-            return _finish("真实后端分析完成，报告已经持久化并可下载。")
+            return AIMessage(
+                content="真实后端分析完成，报告已经持久化并可下载。"
+            )
         dataset = _input_dataset(messages)
         return AIMessage(
             content="",
             tool_calls=[
                 {
                     "name": "generate_live_report",
-                    "args": {"dataset": dataset},
+                    "args": {
+                        "dataset": {
+                            "artifact_id": dataset["artifact_id"],
+                        }
+                    },
                     "id": "live-e2e-reviewed-report",
                     "type": "tool_call",
                 }

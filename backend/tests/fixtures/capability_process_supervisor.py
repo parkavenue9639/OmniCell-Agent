@@ -9,8 +9,10 @@ from uuid import UUID
 from omnicell_agent.agent.cancellation import CancellationToken
 from omnicell_agent.agent.capability_process import SubprocessCapabilityInvoker
 from omnicell_agent.capabilities.artifacts import ConversationArtifactStore
-from omnicell_agent.capabilities.contracts import SingleCellAnalysisRequest
-from omnicell_agent.capabilities.graph_a import SingleCellAnalysisCapability
+from omnicell_agent.capabilities.contracts import ExploratoryAnalysisRequest
+from omnicell_agent.capabilities.exploratory_analysis import (
+    ExploratoryAnalysisCapability,
+)
 from omnicell_agent.capabilities.registry import CapabilityContext, CapabilityRegistry
 
 
@@ -35,7 +37,7 @@ async def _main() -> None:
     )
     registry = CapabilityRegistry()
     registry.register(
-        SingleCellAnalysisCapability(
+        ExploratoryAnalysisCapability(
             graph_factory=lambda: None,
             scope_factory=lambda _workspace: None,
         )
@@ -45,7 +47,9 @@ async def _main() -> None:
     invoker = SubprocessCapabilityInvoker(
         registry,
         CapabilityContext(conversation_id, store),
-        bootstrap_target="capability_process_fixture:build_blocking_graph_a_docker_layer",
+        bootstrap_target=(
+            "capability_process_fixture:build_blocking_exploratory_docker_layer"
+        ),
         child_env={
             "PYTHONPATH": os.pathsep.join(
                 value
@@ -63,8 +67,8 @@ async def _main() -> None:
     token = CancellationToken()
     token.enable_lease_watchdog(timeout_seconds=30)
     await invoker.invoke(
-        "single_cell_analysis",
-        SingleCellAnalysisRequest(
+        "run_exploratory_analysis",
+        ExploratoryAnalysisRequest(
             dataset=dataset,
             goal="exercise parent hard-loss recovery",
         ).model_dump(mode="json"),

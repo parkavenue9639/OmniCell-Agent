@@ -19,6 +19,7 @@ from omnicell_agent.runs.events import (
     RuntimeCommandStartedPayload,
     RuntimeOutputPayload,
     SkillLoadCompletedPayload,
+    SkillLoadFailedPayload,
     SkillLoadStartedPayload,
     TaskCreatedPayload,
     TaskUpdatedPayload,
@@ -108,7 +109,7 @@ def test_lifecycle_observer_projects_explicit_plan_tasks() -> None:
             "tool_call_id": "agent-plan:1:1",
             "title": "检查输入",
             "description": "只读检查当前数据",
-            "capability_name": "inspect_single_cell_context",
+            "capability_name": "inspect_dataset",
         },
         f"task:{task_id}:created",
     )
@@ -126,13 +127,43 @@ def test_lifecycle_observer_projects_explicit_plan_tasks() -> None:
         task_id=task_id,
         title="检查输入",
         description="只读检查当前数据",
-        capability_name="inspect_single_cell_context",
+        capability_name="inspect_dataset",
     )
     assert updated == TaskUpdatedPayload(
         task_id=task_id,
         status="completed",
         summary="输入已验证",
     )
+    assert refs == ()
+
+
+def test_lifecycle_observer_projects_result_oriented_inspection_summary() -> None:
+    observer = object.__new__(RunLifecycleObserver)
+    observer.run_id = uuid4()
+    observer._max_turns = 24
+
+    completed, refs = observer._project(
+        EventType.CAPABILITY_COMPLETED,
+        {
+            "tool_call_id": "inspect-dataset-1",
+            "capability": "inspect_dataset",
+            "result": {
+                "context": {
+                    "species": "Human",
+                    "tissue": "PBMC",
+                    "disease_state": "Healthy",
+                    "goal_type": "cell_type_annotation",
+                }
+            },
+        },
+        "capability:completed",
+    )
+
+    assert completed.summary == (
+        "数据集信息：物种 Human；组织 PBMC；疾病状态 Healthy；"
+        "任务类型 cell_type_annotation"
+    )
+    assert completed.result_status is None
     assert refs == ()
 
 
@@ -147,6 +178,8 @@ def test_lifecycle_observer_projects_skill_loading_without_skill_content() -> No
         "resource_kind": "reference",
         "resource_name": "quality-control.md",
         "purpose": "validation_rules",
+        "skill_version": "1.0",
+        "resource_sha256": "a" * 64,
     }
     load_id = skill_load_id(observer.run_id, tool_call_id)
 
@@ -164,6 +197,14 @@ def test_lifecycle_observer_projects_skill_loading_without_skill_content() -> No
         },
         "skill:completed",
     )
+    failed, _ = observer._project(
+        EventType.SKILL_LOAD_FAILED,
+        {
+            **common,
+            "error_code": "skill_context_stale",
+        },
+        "skill:failed",
+    )
 
     assert started == SkillLoadStartedPayload(
         skill_load_id=load_id,
@@ -171,6 +212,8 @@ def test_lifecycle_observer_projects_skill_loading_without_skill_content() -> No
         resource_kind="reference",
         resource_name="quality-control.md",
         purpose="validation_rules",
+        skill_version="1.0",
+        resource_sha256="a" * 64,
     )
     assert completed == SkillLoadCompletedPayload(
         skill_load_id=load_id,
@@ -178,9 +221,25 @@ def test_lifecycle_observer_projects_skill_loading_without_skill_content() -> No
         resource_kind="reference",
         resource_name="quality-control.md",
         purpose="validation_rules",
+        skill_version="1.0",
+        resource_sha256="a" * 64,
         outcome="loaded",
         content_bytes=2048,
     )
+    assert failed == SkillLoadFailedPayload(
+        skill_load_id=load_id,
+        skill_name="pca-clustering",
+        resource_kind="reference",
+        resource_name="quality-control.md",
+        purpose="validation_rules",
+        skill_version="1.0",
+        resource_sha256="a" * 64,
+        error_code="skill_context_stale",
+        error_summary=(
+            "已清理失效的 Skill 方法上下文；可以重新加载当前 Skill。"
+        ),
+    )
+    assert started.skill_load_id == failed.skill_load_id
     assert "content" not in completed.model_dump()
 
 
@@ -191,7 +250,7 @@ def test_lifecycle_observer_rebinds_runtime_transcript_identity() -> None:
     tool_call_id = "tool-call-1"
     local_command_id = uuid4().hex
     common = {
-        "capability": "run_pca_clustering",
+        "capability": "cluster_cells",
         "tool_call_id": tool_call_id,
         "attempt": 2,
         "command_id": local_command_id,
@@ -251,7 +310,7 @@ def test_lifecycle_observer_rebinds_runtime_transcript_identity() -> None:
     assert started == RuntimeCommandStartedPayload(
         runtime_command_id=public_command_id,
         capability_call_id=public_call_id,
-        capability_name="run_pca_clustering",
+        capability_name="cluster_cells",
         task_id=public_task_id,
         attempt=2,
         backend="local-docker-cli",
@@ -262,7 +321,7 @@ def test_lifecycle_observer_rebinds_runtime_transcript_identity() -> None:
     assert output == RuntimeOutputPayload(
         runtime_command_id=public_command_id,
         capability_call_id=public_call_id,
-        capability_name="run_pca_clustering",
+        capability_name="cluster_cells",
         task_id=public_task_id,
         attempt=2,
         stream="stdout",
@@ -272,7 +331,7 @@ def test_lifecycle_observer_rebinds_runtime_transcript_identity() -> None:
     assert completed == RuntimeCommandCompletedPayload(
         runtime_command_id=public_command_id,
         capability_call_id=public_call_id,
-        capability_name="run_pca_clustering",
+        capability_name="cluster_cells",
         task_id=public_task_id,
         attempt=2,
         outcome="completed",

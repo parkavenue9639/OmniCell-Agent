@@ -7,6 +7,14 @@ from .capability_process import (
     SubprocessCapabilityInvoker,
 )
 from .factory import AgentLoopFactory
+from .hooks import (
+    AgentHook,
+    AgentTurnContext,
+    BaseAgentHook,
+    MalformedToolHistoryHook,
+    PlanBackpressureHook,
+    SkillMethodContextHook,
+)
 from .loop import (
     AgentExecution,
     AgentLoopConfig,
@@ -18,17 +26,23 @@ from .policy import DefaultToolPolicy, ToolPolicyDecision, ToolPolicyOutcome
 
 __all__ = [
     "AgentExecution",
+    "AgentHook",
     "AgentLoopConfig",
     "AgentLoopFactory",
     "AgentOutcome",
     "AgentOutcomeStatus",
+    "AgentTurnContext",
+    "BaseAgentHook",
     "CancellationToken",
     "CapabilityProcessError",
     "CooperativeInProcessCapabilityInvoker",
     "DefaultToolPolicy",
+    "MalformedToolHistoryHook",
+    "PlanBackpressureHook",
     "ReviewInterrupt",
     "RunCancelledError",
     "SubprocessCapabilityInvoker",
+    "SkillMethodContextHook",
     "ToolPolicyDecision",
     "ToolPolicyOutcome",
 ]

@@ -6,8 +6,11 @@ from dataclasses import dataclass
 
 from .atomic import build_atomic_capabilities
 from .catalog import SkillCatalog, load_builtin_skill_catalog
-from .graph_a import InspectSingleCellContextCapability, SingleCellAnalysisCapability
-from .graph_b import DeepCellAnnotationCapability, InspectMarkerContractCapability
+from .cell_annotation import CellAnnotationCapability, InspectMarkerTableCapability
+from .exploratory_analysis import (
+    ExploratoryAnalysisCapability,
+    InspectDatasetCapability,
+)
 from .registry import CapabilityRegistry, CapabilityRegistryError
 
 
@@ -20,11 +23,11 @@ class DomainCapabilityLayer:
 def build_domain_capability_layer() -> DomainCapabilityLayer:
     registry = CapabilityRegistry()
     for handler in (
-        InspectSingleCellContextCapability(),
+        InspectDatasetCapability(),
         *build_atomic_capabilities(),
-        SingleCellAnalysisCapability(),
-        InspectMarkerContractCapability(),
-        DeepCellAnnotationCapability(),
+        ExploratoryAnalysisCapability(),
+        InspectMarkerTableCapability(),
+        CellAnnotationCapability(),
     ):
         registry.register(handler)
     skills = load_builtin_skill_catalog()
@@ -37,11 +40,24 @@ def validate_skill_tool_references(
     skills: SkillCatalog,
 ) -> None:
     specs = {spec.name: spec for spec in registry.specs}
+    skill_names = {skill.name for skill in skills.skills}
     for skill in skills.skills:
         for tool_name in skill.tools:
             if tool_name not in specs:
                 raise CapabilityRegistryError(
                     f"skill {skill.name} 引用了未知 Tool：{tool_name}"
+                )
+    for spec in specs.values():
+        for skill_name in (*spec.recommended_skills, *spec.required_skills):
+            if skill_name not in skill_names:
+                raise CapabilityRegistryError(
+                    f"Tool {spec.name} 引用了未知 Skill：{skill_name}"
+                )
+        for skill_name in spec.required_skills:
+            skill = skills.get(skill_name)
+            if spec.name not in skill.tools:
+                raise CapabilityRegistryError(
+                    f"Tool {spec.name} 要求的 Skill {skill_name} 未声明该 Tool"
                 )
 
 

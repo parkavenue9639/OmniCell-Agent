@@ -8,7 +8,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 class MarkerGene(BaseModel):
     """
     单个基因的差异表达指标抽象。
-    允许 Graph A 输出附加的科学指标，同时规范 Graph B 依赖的稳定字段。
+    允许上游分析输出附加科学指标，同时规范细胞注释依赖的稳定字段。
     """
     model_config = ConfigDict(extra="allow")
 
@@ -44,7 +44,7 @@ class MarkerGene(BaseModel):
 
 class MarkerTableContract(BaseModel):
     """
-    Graph A 输出与 Graph B 输入之间的正式 marker-table artifact 契约。
+    上游 marker 分析与细胞注释之间的正式 marker-table artifact 契约。
     """
     metadata: dict[str, Any] = Field(
         default_factory=dict,
@@ -65,7 +65,7 @@ class MarkerTableContract(BaseModel):
         """从调用方已经固定并校验的流读取 marker-table 契约。"""
 
         data = json.load(stream)
-        # Graph A 的标准导出目标是 marker JSON array；完整 envelope 用于
+        # 标准导出目标是 marker JSON array；完整 envelope 用于
         # 携带可选 provenance metadata。两者都是当前正式输入形态。
         if isinstance(data, list):
             data = {"metadata": {}, "markers": data}
@@ -74,7 +74,7 @@ class MarkerTableContract(BaseModel):
 
     @classmethod
     def load_from_json(cls, path: str | Path) -> "MarkerTableContract":
-        """读取 Graph A 的 marker array 或完整 marker-table envelope。"""
+        """读取 marker array 或完整 marker-table envelope。"""
 
         with open(path, "r", encoding="utf-8") as stream:
             return cls.load_from_stream(stream)

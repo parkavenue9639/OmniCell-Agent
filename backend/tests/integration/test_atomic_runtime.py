@@ -13,7 +13,9 @@ from omnicell_agent.capabilities.artifacts import ConversationArtifactStore
 from omnicell_agent.capabilities.atomic import build_atomic_capabilities
 from omnicell_agent.capabilities.contracts import (
     ArtifactRef,
-    AtomicAnalysisRequest,
+    ClusterCellsRequest,
+    FindMarkerGenesRequest,
+    NormalizeExpressionRequest,
 )
 from omnicell_agent.capabilities.registry import CapabilityContext
 
@@ -68,8 +70,13 @@ def _invoke(
         handler.spec.name: handler
         for handler in build_atomic_capabilities()
     }
+    request_models = {
+        "normalize_expression": NormalizeExpressionRequest,
+        "cluster_cells": ClusterCellsRequest,
+        "find_marker_genes": FindMarkerGenesRequest,
+    }
     return handlers[operation].invoke(
-        AtomicAnalysisRequest(dataset=source),
+        request_models[operation](dataset=source),
         CapabilityContext(
             conversation_id=source.conversation_id,
             artifacts=store,
@@ -96,7 +103,7 @@ def test_real_atomic_dataset_chain_across_isolated_invocations(
     control_root.mkdir()
 
     normalized = _invoke(
-        operation="run_normalize_log",
+        operation="normalize_expression",
         source=source,
         workspace=workspace,
         invocation_id="1" * 32,
@@ -106,7 +113,7 @@ def test_real_atomic_dataset_chain_across_isolated_invocations(
     assert normalized.output_dataset is not None
 
     clustered = _invoke(
-        operation="run_pca_clustering",
+        operation="cluster_cells",
         source=normalized.output_dataset,
         workspace=workspace,
         invocation_id="2" * 32,
@@ -120,7 +127,7 @@ def test_real_atomic_dataset_chain_across_isolated_invocations(
     assert any(ref.kind == "image" for ref in clustered.artifacts)
 
     markers = _invoke(
-        operation="extract_marker_genes",
+        operation="find_marker_genes",
         source=clustered.output_dataset,
         workspace=workspace,
         invocation_id="3" * 32,

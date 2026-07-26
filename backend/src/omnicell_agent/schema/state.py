@@ -1,24 +1,78 @@
 import operator
-from typing import Annotated, TypedDict, List, Dict, Any, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional, TypedDict
 from langchain_core.messages import BaseMessage
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from omnicell_agent.recipes.catalog import (
+    RecipeCatalogError,
+    load_builtin_recipe_catalog,
+)
+
 
 class PlanStep(BaseModel):
-    step_type: str = Field(..., description="指令类型：如果是已知官方库自带技能则填 'skill_call'；如果是需要让 Programmer 自己手搓的非标能力甚至未知需求则填 'custom_code'。")
-    skill_name: Optional[str] = Field(None, description="如果 step_type 是 'skill_call'，必须填入命中技能的具体英文标识（从元数据列表中选择）。否则留空。")
+    step_type: Literal["recipe_call", "custom_code"] = Field(
+        ...,
+        description=(
+            "已验证的确定性脚本使用 recipe_call；"
+            "只有标准 Recipe 无法覆盖的非标需求使用 custom_code。"
+        ),
+    )
+    recipe_name: Optional[str] = Field(
+        None,
+        description=(
+            "step_type 为 recipe_call 时填写已注册 Recipe 标识，否则留空。"
+        ),
+    )
     instruction: str = Field(..., description="给 Programmer / 或人类看的本步骤自然语言短口令。例如：'执行 PCA 并将结果绘制保存。'")
-    background_context: Optional[str] = Field(None, description="如果是 custom_code，请尽可能提供一些由于没有技能脚本而导致的上下文缺失信息（如：建议他调用 scanpy 的什么函数、需要关注什么格式等防爆补充）。")
+    background_context: Optional[str] = Field(
+        None,
+        description=(
+            "custom_code 的必要科学背景，例如建议使用的 scanpy API 和输出格式。"
+        ),
+    )
+    parameters: Dict[str, Any] = Field(
+        default_factory=dict,
+        max_length=16,
+        description=(
+            "recipe_call 的类型化参数；省略时由 Recipe Registry 注入确定性默认值。"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_recipe_selection(self) -> "PlanStep":
+        if self.step_type == "recipe_call" and not self.recipe_name:
+            raise ValueError("recipe_call 必须指定 recipe_name")
+        if self.step_type == "custom_code" and self.recipe_name is not None:
+            raise ValueError("custom_code 不能指定 recipe_name")
+        if self.step_type == "custom_code" and self.parameters:
+            raise ValueError("custom_code 不能携带 Recipe 参数")
+        if self.recipe_name:
+            try:
+                definition = load_builtin_recipe_catalog().get(
+                    self.recipe_name
+                )
+                self.parameters = definition.normalize_parameters(
+                    self.parameters
+                )
+            except RecipeCatalogError as exc:
+                raise ValueError(str(exc)) from exc
+        return self
 
 class AnalysisPlan(BaseModel):
-    steps: List[PlanStep] = Field(..., description="解析重组后的拆分执行指令列表，按细胞步进式执行流顺序排列。")
+    steps: List[PlanStep] = Field(
+        ...,
+        min_length=1,
+        max_length=12,
+        description="完成当前探索性目标所需的最少执行步骤，按依赖顺序排列。",
+    )
 
 
 # ==============================================================================
-# Sub-Graph A: Data Pipeline State
+# 探索性分析内部状态
 # ==============================================================================
-class DataPipeline_State(TypedDict):
+class ExploratoryAnalysisState(TypedDict):
     """
-    Sub-Graph A 专门负责数据到代码生成的全链路串流。
+    探索性分析内部的数据到代码生成状态。
     核心原则：不要在 State 内存中存储 .h5ad 及衍生的任何 AnnData 等重度矩阵对象，
     仅存储文件路径。
     """
@@ -33,7 +87,7 @@ class DataPipeline_State(TypedDict):
     # 为了避免后续如果扩展算法导致需要增加诸如 "n_pca", "resolution" 等导致形参爆炸, 统一塞入此槽位
     task_context: Dict[str, Any]       
     
-    # Skill-Driven Pipeline 的循环步游标引擎
+    # Recipe-driven 内部执行游标
     plan_steps: List[Dict[str, Any]]   # 从 Planner 拿到并转化后的 Pydantic Dict 队列
     current_step_index: int            # 当前进行到了第几步
     
@@ -44,13 +98,13 @@ class DataPipeline_State(TypedDict):
 
 
 # ==============================================================================
-# Sub-Graph B: Deep Annotation State
+# 细胞类型注释内部状态
 # ==============================================================================
 
 # 以下为单一 Cluster 被 Send API 派发出去后的微观状态
-class Annotation_State(TypedDict):
+class ClusterAnnotationState(TypedDict):
     """
-    Sub-Graph B 当中处理**单一簇(cluster)**的细粒度流转状态。
+    处理单一 cluster 注释的细粒度流转状态。
     支持在最高并发场景下各自独立运作。
     """
     # 单独标识符
@@ -59,9 +113,10 @@ class Annotation_State(TypedDict):
     tissue: str
     
     # 从契约层映射过来的本细胞簇指纹：
-    # 尽量不加载所有的 marker(如数万行)，而是挂载 top_n_markers(list) 加速第一轮 LLM 的 token 理解，
-    # 并保留 contract_file_path，以便在 Boost 节点需要查询全谱系时供节点现场 I/O 获取。
-    top_n_markers: List[str]          
+    # 第一轮同时保留有界基因名列表和对应定量 DE 证据，避免只凭名称给出高分；
+    # 并保留 contract_file_path，以便 Boost 节点按需查询更宽的证据集合。
+    top_n_markers: List[str]
+    top_marker_evidence: List[str]
     contract_file_path: str           
     
     # 核心推理思维与轨迹记录
@@ -75,16 +130,16 @@ class Annotation_State(TypedDict):
     retry_count: int
 
 
-# 以下为子图 B 作为整体被外部调用时的宏观状态
+# 注释复合能力的聚合状态
 def update_annotation_dict(existing: Dict[str, Any], new_updates: Dict[str, Any]) -> Dict[str, Any]:
     """自定义的状态归并策略：用于将各并发簇的打标结果安全合并到总字典"""
     merged = existing.copy() if existing else {}
     merged.update(new_updates)
     return merged
 
-class SubGraphB_State(TypedDict):
+class CellAnnotationState(TypedDict):
     """
-    Sub-Graph B 的主状态树。
+    细胞类型注释内部引擎的主状态。
     接收总档并负责生发单细胞簇鉴定任务。
     """
     # 顶层入口配置
@@ -92,7 +147,7 @@ class SubGraphB_State(TypedDict):
     species: str
     tissue: str
     
-    # 这里用于归集所有底层 Annotation_State 散播出去后最终收敛返回的细胞身份，
+    # 这里用于归集所有底层 ClusterAnnotationState 并发返回的细胞身份，
     # 键为 cluster_id，值为具体的 annotation string 等组合。
     cluster_annotations: Annotated[Dict[str, Any], update_annotation_dict]
     

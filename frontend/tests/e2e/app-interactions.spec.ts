@@ -20,7 +20,7 @@ async function json(route: Route, body: unknown, status = 200) {
 
 function conversation(
   id: string,
-  title: string,
+  title: string | null,
   datasetArtifactId: string | null = null,
 ) {
   return {
@@ -110,6 +110,117 @@ function eventReplay(runId: string, items: readonly unknown[]) {
     has_more: false,
   };
 }
+
+test("新会话首轮提交后刷新 backend 总结标题", async ({ page }) => {
+  const summarizedTitle = "PBMC Marker 基因解释";
+  let created = false;
+  let submitted = false;
+  let createBody: unknown;
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === "/api/v1/conversations" && request.method() === "POST") {
+      createBody = request.postDataJSON();
+      created = true;
+      await json(route, conversation(conversationA, null), 201);
+      return;
+    }
+    if (path === "/api/v1/conversations") {
+      await json(route, {
+        schema_version: 1,
+        items: created
+          ? [conversation(conversationA, submitted ? summarizedTitle : null)]
+          : [],
+        page: { next_cursor: null, has_more: false },
+      });
+      return;
+    }
+    if (path === `/api/v1/conversations/${conversationA}`) {
+      await json(
+        route,
+        conversation(conversationA, submitted ? summarizedTitle : null),
+      );
+      return;
+    }
+    if (
+      path === `/api/v1/conversations/${conversationA}/runs` &&
+      request.method() === "POST"
+    ) {
+      submitted = true;
+      await json(
+        route,
+        { run: run(runNew, conversationA, "completed") },
+        202,
+      );
+      return;
+    }
+    if (path.endsWith("/history")) {
+      await json(
+        route,
+        history(
+          conversationA,
+          submitted ? [run(runNew, conversationA, "completed")] : [],
+        ),
+      );
+      return;
+    }
+    if (path.endsWith("/events")) {
+      await json(
+        route,
+        eventReplay(runNew, [
+          event(1, "run.created", { status: "pending" }),
+          event(2, "message.completed", {
+            message_id: "12121212-1212-4212-8212-121212121212",
+            role: "user",
+            content: "为什么聚类后还需要 Marker Gene？",
+            turn_index: null,
+            has_tool_calls: false,
+            stop_reason: null,
+            content_artifact_id: null,
+          }),
+          event(3, "run.completed", { status: "completed" }),
+        ]),
+      );
+      return;
+    }
+    if (path.endsWith("/artifacts")) {
+      await json(route, artifacts(conversationA, []));
+      return;
+    }
+    if (path.endsWith("/reviews")) {
+      await json(route, reviews(conversationA, []));
+      return;
+    }
+    await route.fulfill({
+      status: 404,
+      body: `unexpected ${request.method()} ${path}`,
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "新建分析对话" }).click();
+  expect(createBody).toEqual({});
+  await expect(
+    page.getByRole("heading", { name: "新分析对话" }),
+  ).toBeVisible();
+
+  await page
+    .getByRole("textbox", { name: "分析指令" })
+    .fill("为什么聚类后还需要 Marker Gene？");
+  await page.getByRole("button", { name: "发送分析指令" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: summarizedTitle }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: new RegExp(summarizedTitle) }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: summarizedTitle }),
+  ).toBeVisible();
+});
 
 test("上传期间切换 conversation 不会泄漏 dataset 选择", async ({ page }) => {
   let releaseUpload!: () => void;
@@ -297,6 +408,8 @@ test("连续 run 刷新后恢复最新 run 并按 run 查询 review", async ({ p
       resource_kind: "body",
       resource_name: null,
       purpose: "domain_method",
+      skill_version: "1.0",
+      resource_sha256: "a".repeat(64),
     }),
     event(3, "skill.load_completed", {
       skill_load_id: skillLoadId,
@@ -304,6 +417,8 @@ test("连续 run 刷新后恢复最新 run 并按 run 查询 review", async ({ p
       resource_kind: "body",
       resource_name: null,
       purpose: "domain_method",
+      skill_version: "1.0",
+      resource_sha256: "a".repeat(64),
       outcome: "loaded",
       content_bytes: 2048,
     }),
@@ -398,14 +513,16 @@ test("连续 run 刷新后恢复最新 run 并按 run 查询 review", async ({ p
 
   await page.goto(`/conversation/${conversationA}`);
   await expect(page.getByText("newest run restored")).toBeVisible();
-  await expect(page.getByText("SKILL · 渐进加载")).toBeVisible();
-  await expect(page.getByText("Skill 正文 · 加载领域方法")).toBeVisible();
+  await expect(page.getByText("SKILL", { exact: true })).toBeVisible();
+  await expect(
+    page.locator(".oc-skill-activity .oc-activity-purpose strong"),
+  ).toHaveText("加载领域方法");
   await expect.poll(() => requestedReviewRuns.at(-1)).toBe(runNew);
   expect(requestedStreams).not.toContain(runOld);
 
   await page.reload();
   await expect(page.getByText("newest run restored")).toBeVisible();
-  await expect(page.getByText("SKILL · 渐进加载")).toBeVisible();
+  await expect(page.getByText("SKILL", { exact: true })).toBeVisible();
   await expect.poll(() => requestedReviewRuns.at(-1)).toBe(runNew);
   expect(requestedStreams).not.toContain(runOld);
 });

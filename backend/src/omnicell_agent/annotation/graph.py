@@ -4,7 +4,10 @@ from typing import Dict, Any, List
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
 
-from omnicell_agent.schema.state import SubGraphB_State, Annotation_State
+from omnicell_agent.schema.state import (
+    CellAnnotationState,
+    ClusterAnnotationState,
+)
 from omnicell_agent.schema.contract import MarkerTableContract
 
 from omnicell_agent.annotation.nodes.annotator import annotator_node
@@ -20,14 +23,14 @@ logger = logging.getLogger(__name__)
 TOP_N_MARKERS = 20
 
 
-def distribute_clusters(state: SubGraphB_State) -> List[Send]:
+def distribute_clusters(state: CellAnnotationState) -> List[Send]:
     """
-    Sub-Graph B 的 Map-Reduce 起射器逻辑。
+    细胞注释内部引擎的 Map-Reduce 分发逻辑。
     将一个涵盖所有聚类结果的宏大数据契约，精密切分为独立的细胞簇并发分支。
     """
     contract_path = state.get("contract_file_path", "")
-    species = state.get("species", "Human")
-    tissue = state.get("tissue", "PBMC")
+    species = state.get("species", "Unknown")
+    tissue = state.get("tissue", "Unknown")
 
     try:
         contract = MarkerTableContract.load_from_json(contract_path)
@@ -45,13 +48,24 @@ def distribute_clusters(state: SubGraphB_State) -> List[Send]:
     sends = []
     for cid, markers in cluster_markers.items():
         markers.sort(key=lambda x: x.p_val_adj)
-        top_n = [m.gene_name for m in markers[:TOP_N_MARKERS]]
+        selected_markers = markers[:TOP_N_MARKERS]
+        top_n = [m.gene_name for m in selected_markers]
+        top_marker_evidence = [
+            (
+                f"{m.gene_name}: log2FC={m.log2FC:.3g}, "
+                f"pct_in={m.pct_1:.3g}, pct_out={m.pct_2:.3g}, "
+                f"delta_pct={(m.pct_1 - m.pct_2):.3g}, "
+                f"p_adj={m.p_val_adj:.3g}"
+            )
+            for m in selected_markers
+        ]
 
-        child_state = Annotation_State(
+        child_state = ClusterAnnotationState(
             cluster_id=cid,
             species=species,
             tissue=tissue,
             top_n_markers=top_n,
+            top_marker_evidence=top_marker_evidence,
             contract_file_path=contract_path,
             reasoning_messages=[],
             predictions={},
@@ -60,11 +74,11 @@ def distribute_clusters(state: SubGraphB_State) -> List[Send]:
         )
         sends.append(Send("process_cluster", child_state))
 
-    logger.info(f"图 B 主干网已建立，成功并发派发 {len(sends)} 个寻址靶向任务！")
+    logger.info("细胞注释已并发派发 %s 个 cluster 任务", len(sends))
     return sends
 
 
-def post_scorer_route(state: Annotation_State) -> str:
+def post_scorer_route(state: ClusterAnnotationState) -> str:
     """Boost 仅允许一次：低分且尚未 Boost 时进入 boost；否则结束微观图。
     当 ENABLE_BOOST=False 时，跳过 Boost 直接结束。
     """
@@ -86,7 +100,7 @@ def post_scorer_route(state: Annotation_State) -> str:
 
 def build_single_cluster_graph():
     """微观图：单簇从打标、审核、打分到 Boost 后复审的闭环"""
-    builder = StateGraph(Annotation_State)
+    builder = StateGraph(ClusterAnnotationState)
     builder.add_node("annotator", annotator_node)
     builder.add_node("validator", validator_node)
     builder.add_node("scorer", scorer_node)
@@ -111,7 +125,7 @@ def build_single_cluster_graph():
 single_cluster_app = build_single_cluster_graph()
 
 
-def process_cluster_wrapper(state: Annotation_State) -> Dict[str, Any]:
+def process_cluster_wrapper(state: ClusterAnnotationState) -> Dict[str, Any]:
     """包装器：调用微观图，并归并母状态关心的结果字典"""
     final_child = single_cluster_app.invoke(state)
     cid = final_child.get("cluster_id")
@@ -124,12 +138,7 @@ def process_cluster_wrapper(state: Annotation_State) -> Dict[str, Any]:
     except (TypeError, ValueError):
         preds["self_consistency_ok"] = 1.0
 
-    retry_count = int(final_child.get("retry_count", 0) or 0)
     cs = float(q.get("cs_score", 0.0))
-    if retry_count >= 1 and cs < 75.0 and isinstance(preds.get("sub_type"), str):
-        st = preds["sub_type"]
-        if "(NeedsReview)" not in st:
-            preds["sub_type"] = f"{st} (NeedsReview)"
 
     flags: List[str] = []
     try:
@@ -137,9 +146,13 @@ def process_cluster_wrapper(state: Annotation_State) -> Dict[str, Any]:
             flags.append("low_self_consistency")
     except (TypeError, ValueError):
         pass
-    if isinstance(preds.get("sub_type"), str) and "(Boosted)" in preds["sub_type"]:
+    if bool(q.get("boost_applied", False)):
         flags.append("boosted")
-    if isinstance(preds.get("sub_type"), str) and "(NeedsReview)" in preds["sub_type"]:
+    if (
+        cs < 75.0
+        or preds.get("sub_type") in {None, "", "Unknown"}
+        or bool(q.get("annotation_failed", False))
+    ):
         flags.append("needs_review")
 
     preds["flags"] = flags
@@ -148,8 +161,8 @@ def process_cluster_wrapper(state: Annotation_State) -> Dict[str, Any]:
 
 
 def build_annotation_graph():
-    """组装 Sub-Graph B：Map -> process_cluster -> [consistency] -> reporter"""
-    builder = StateGraph(SubGraphB_State)
+    """组装细胞注释内部引擎。"""
+    builder = StateGraph(CellAnnotationState)
 
     builder.add_node("process_cluster", process_cluster_wrapper)
     builder.add_node("consistency_reviewer", consistency_reviewer_node)

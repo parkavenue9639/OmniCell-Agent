@@ -1,4 +1,4 @@
-"""Graph A/B 核心行为测试使用的受控模型替身。"""
+"""分析与细胞注释核心行为测试使用的受控模型替身。"""
 
 from typing import Any
 
@@ -30,8 +30,8 @@ class ControlledStructuredModel:
             return AnalysisPlan(
                 steps=[
                     PlanStep(
-                        step_type="skill_call",
-                        skill_name="normalize_log",
+                        step_type="recipe_call",
+                        recipe_name="normalize_log",
                         instruction="执行标准归一化与对数变换",
                     )
                 ]

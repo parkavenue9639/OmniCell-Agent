@@ -32,7 +32,6 @@ def test_domain_nodes_use_declared_llm_roles() -> None:
         "src/omnicell_agent/pipeline/nodes/context_resolver.py": "FAST_ROUTER",
         "src/omnicell_agent/pipeline/nodes/programmer.py": "CODE_GENERATION",
         "src/omnicell_agent/pipeline/nodes/evaluator.py": "VISION",
-        "src/omnicell_agent/pipeline/nodes/summarizer.py": "SUMMARY",
         "src/omnicell_agent/annotation/nodes/annotator.py": "ANNOTATION",
         "src/omnicell_agent/annotation/nodes/boost.py": "ANNOTATION",
         "src/omnicell_agent/annotation/nodes/validator.py": "VALIDATION",

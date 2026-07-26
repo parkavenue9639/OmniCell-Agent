@@ -1,4 +1,4 @@
-"""Graph A 基于 Local Docker Backend 的有状态 Python 会话。"""
+"""探索性分析基于 Local Docker Backend 的有状态 Python 会话。"""
 
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ except FileNotFoundError:
 
 
 class _AsyncLoopBridge:
-    """让同步 Graph A 在一个固定 event loop 上使用异步 runtime。"""
+    """让同步分析引擎在一个固定 event loop 上使用异步 runtime。"""
 
     def __init__(self) -> None:
         self._ready = threading.Event()
@@ -170,10 +170,12 @@ class LocalDockerPythonSession:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds 必须为正整数")
         if host_workspace is None:
-            raise ValueError("Graph A Python session 必须提供 conversation host_workspace")
+            raise ValueError(
+                "Analysis Python session 必须提供 conversation host_workspace"
+            )
         self.host_workspace = Path(host_workspace).resolve()
         self.profile = profile or RuntimeProfile(
-            name="graph-a-python",
+            name="analysis-python",
             image=os.environ.get("OMNICELL_RUNTIME_IMAGE", "omnicell-worker:latest"),
             user="65532:65532",
             env={

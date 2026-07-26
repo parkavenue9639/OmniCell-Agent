@@ -33,6 +33,7 @@ from omnicell_agent.runtime.cancellation import runtime_cancellation_scope
 from omnicell_agent.runtime.docker_cli import DockerCLI
 
 from .cancellation import CancellationToken, RunCancelledError
+from .resource_boundary import RUNTIME_CONTROL_ROOT
 
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,6 @@ _ACTIVITY_TOTAL_MAX_BYTES = 8 * 1024 * 1024
 _CONTAINER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _IMMUTABLE_CONTAINER_ID = re.compile(r"^(?:sha256:)?[0-9a-f]{12,64}$")
 _INVOCATION_ID = re.compile(r"^[0-9a-f]{32}$")
-_RUNTIME_CONTROL_ROOT = ".omnicell-runtime-control"
 _PROVISIONAL_CLEANUP_TIMEOUT_SECONDS = 65.0
 _PROVISIONAL_CLEANUP_POLL_SECONDS = 0.25
 _ARTIFACT_FIELDS = frozenset(ArtifactRef.model_fields)
@@ -84,7 +84,7 @@ CapabilityInvokerFactory = Callable[
 def _runtime_claim_root(workspace: Path, *, create: bool) -> Path:
     root = workspace.expanduser().resolve(strict=True)
     identity = hashlib.sha256(os.fspath(root).encode("utf-8")).hexdigest()
-    control_parent = root.parent / _RUNTIME_CONTROL_ROOT / "claims"
+    control_parent = root.parent / RUNTIME_CONTROL_ROOT / "claims"
     claim_root = control_parent / identity
     try:
         if create:

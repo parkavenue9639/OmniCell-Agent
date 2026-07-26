@@ -7,8 +7,8 @@ import {
 } from "react";
 
 import type {
+  ActivityProcessState,
   ArtifactViewModel,
-  CapabilityViewModel,
   ConnectionState,
   ConversationWorkspaceActions,
   ConversationWorkspaceViewModel,
@@ -16,7 +16,6 @@ import type {
   ReviewViewModel,
   RunState,
   TaskViewModel,
-  TimelineCapabilityItem,
   TimelineArtifactItem,
   TimelineItem,
   TimelineMessageItem,
@@ -25,11 +24,13 @@ import type {
   TimelineRuntimeItem,
   TimelineSkillItem,
   TimelineTaskItem,
+  TimelineToolItem,
+  ToolExecutionViewModel,
   WorkItemState,
 } from "./view-model";
 
 type InspectorTab =
-  "tasks" | "capabilities" | "reviews" | "artifacts" | "events";
+  "tasks" | "toolExecutions" | "reviews" | "artifacts" | "events";
 
 export interface ConversationWorkspaceProps {
   model: ConversationWorkspaceViewModel;
@@ -53,12 +54,13 @@ const workTone: Record<WorkItemState, string> = {
   review_required: "warning",
   completed: "success",
   failed: "danger",
+  interrupted: "warning",
   cancelled: "neutral",
 };
 
 const tabLabels: Record<InspectorTab, string> = {
   tasks: "任务",
-  capabilities: "能力",
+  toolExecutions: "Tool",
   reviews: "审核",
   artifacts: "产物",
   events: "事件",
@@ -356,54 +358,30 @@ function MessageTimelineItem({ item }: { item: TimelineMessageItem }) {
   );
 }
 
-function CapabilityTimelineItem({ item }: { item: TimelineCapabilityItem }) {
-  const graphLabel =
-    item.family === "graph_a"
-      ? "Graph A"
-      : item.family === "graph_b"
-        ? "Graph B"
-        : "Tool";
+function ActivityProcess({
+  steps,
+}: {
+  steps: readonly {
+    label: string;
+    detail?: string;
+    state: ActivityProcessState;
+  }[];
+}) {
   return (
-    <article className="oc-capability-card" data-family={item.family}>
-      <div className="oc-capability-rail">
-        <span>
-          {item.family === "graph_a"
-            ? "A"
-            : item.family === "graph_b"
-              ? "B"
-              : "T"}
-        </span>
-      </div>
-      <div className="oc-capability-content">
-        <header>
-          <div>
-            <small>
-              {graphLabel} · {item.capability}
-            </small>
-            <h3>{item.title}</h3>
-          </div>
-          <StatusPill
-            label={item.stateLabel}
-            tone={workTone[item.state]}
-            pulse={item.state === "running"}
-          />
-        </header>
-        <p>{item.description}</p>
-        {item.resultSummary && (
-          <div className="oc-result-summary">
-            <span>结果</span>
-            {item.resultSummary}
-          </div>
-        )}
-        {item.progressLabel && (
-          <div className="oc-capability-progress">
-            <span />
-            {item.progressLabel}
-          </div>
-        )}
-        <time>{item.occurredAtLabel}</time>
-      </div>
-    </article>
+    <div className="oc-activity-process">
+      <span className="oc-activity-section-label">过程</span>
+      <ol>
+        {steps.map((step, index) => (
+          <li data-state={step.state} key={`${step.label}:${index}`}>
+            <span className="oc-process-node" />
+            <div>
+              <strong>{step.label}</strong>
+              {step.detail && <small>{step.detail}</small>}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
@@ -414,7 +392,7 @@ function TaskTimelineItem({ item }: { item: TimelineTaskItem }) {
         {item.state === "completed" ? "✓" : item.state === "running" ? "…" : ""}
       </span>
       <div>
-        <small>{item.capability ? `计划任务 · ${item.capability}` : "计划任务"}</small>
+        <small>{item.capability ? `计划任务 · Tool ${item.capability}` : "计划任务"}</small>
         <strong>{item.title}</strong>
         {item.description && <p>{item.description}</p>}
         <time>{item.occurredAtLabel}</time>
@@ -424,6 +402,54 @@ function TaskTimelineItem({ item }: { item: TimelineTaskItem }) {
         tone={workTone[item.state]}
         pulse={item.state === "running"}
       />
+    </article>
+  );
+}
+
+function ToolTimelineItem({ item }: { item: TimelineToolItem }) {
+  return (
+    <article
+      className="oc-activity-card oc-tool-activity"
+      data-family={item.family}
+      data-state={item.state}
+    >
+      <header>
+        <div className="oc-activity-heading">
+          <span className="oc-activity-kind">TOOL</span>
+          <div>
+            <h3>{item.toolName}</h3>
+            <p>{item.title}</p>
+          </div>
+        </div>
+        <StatusPill
+          label={item.stateLabel}
+          tone={workTone[item.state]}
+          pulse={item.state === "running"}
+        />
+      </header>
+      <div className="oc-activity-purpose">
+        <span className="oc-activity-section-label">动作</span>
+        <strong>{item.purpose}</strong>
+      </div>
+      <ActivityProcess steps={item.process} />
+      {item.resultSummary && (
+        <div className="oc-activity-result" data-state={item.state}>
+          <span className="oc-activity-section-label">结果</span>
+          <strong>{item.resultSummary}</strong>
+          {item.errorCode && <code>{item.errorCode}</code>}
+          {item.recoveryHint && <small>建议：{item.recoveryHint}</small>}
+        </div>
+      )}
+      <footer>
+        <time>{item.occurredAtLabel}</time>
+        <span>
+          第 {item.attempt} 次执行
+          {item.durationLabel ? ` · ${item.durationLabel}` : ""}
+          {item.artifactCount > 0
+            ? ` · ${item.artifactCount} 个 Artifact`
+            : ""}
+        </span>
+      </footer>
     </article>
   );
 }
@@ -438,26 +464,60 @@ function SkillTimelineItem({ item }: { item: TimelineSkillItem }) {
           ? "neutral"
           : "danger";
   return (
-    <article className="oc-skill-card" data-state={item.state}>
-      <div className="oc-skill-mark">S</div>
-      <div className="oc-skill-copy">
-        <small>SKILL · 渐进加载</small>
-        <h3>{item.skillName}</h3>
-        <p>
-          {item.resourceLabel} · {item.purposeLabel}
-        </p>
-        {item.resultSummary && (
-          <div className="oc-skill-result">{item.resultSummary}</div>
-        )}
-        <time>{item.occurredAtLabel}</time>
+    <article
+      className="oc-activity-card oc-skill-activity"
+      data-state={item.state}
+    >
+      <header>
+        <div className="oc-activity-heading">
+          <span className="oc-activity-kind">SKILL</span>
+          <div>
+            <h3>{item.skillName}</h3>
+            <p>加载 {item.resourceLabel}</p>
+          </div>
+        </div>
+        <StatusPill
+          label={item.stateLabel}
+          tone={tone}
+          pulse={item.state === "running"}
+        />
+      </header>
+      <div className="oc-activity-purpose">
+        <span className="oc-activity-section-label">动作</span>
+        <strong>{item.purposeLabel}</strong>
       </div>
-      <StatusPill
-        label={item.stateLabel}
-        tone={tone}
-        pulse={item.state === "running"}
-      />
+      <ActivityProcess steps={item.process} />
+      {item.resultSummary && (
+        <div className="oc-activity-result">
+          <span className="oc-activity-section-label">结果</span>
+          <strong>{item.resultSummary}</strong>
+        </div>
+      )}
+      <footer>
+        <time>{item.occurredAtLabel}</time>
+        <span>{item.resourceLabel}</span>
+      </footer>
     </article>
   );
+}
+
+function backendCommandPreview(command: readonly string[]): string {
+  if (command.length === 0) return "等待命令…";
+  const [executable, mode, ...args] = command;
+  if (
+    mode === "-c" &&
+    (executable.endsWith("python") || executable.endsWith("python3"))
+  ) {
+    return `${JSON.stringify(executable)} "-c" "<backend-runner>"${
+      args.length > 1 ? ` … (+${args.length - 1} args)` : ""
+    }`;
+  }
+  const visible = command.slice(0, 5).map((token) =>
+    JSON.stringify(
+      token.length > 120 ? `<argument · ${token.length} characters>` : token,
+    ),
+  );
+  return `${visible.join(" ")}${command.length > visible.length ? " …" : ""}`;
 }
 
 function RuntimeTimelineItem({ item }: { item: TimelineRuntimeItem }) {
@@ -470,13 +530,17 @@ function RuntimeTimelineItem({ item }: { item: TimelineRuntimeItem }) {
           ? "neutral"
           : "danger";
   return (
-    <article className="oc-runtime-card" data-state={item.state}>
+    <article
+      className="oc-activity-card oc-backend-activity"
+      data-state={item.state}
+    >
       <header>
-        <div>
-          <small>
-            RUNTIME · {item.backend} · {item.capability}
-          </small>
-          <h3>容器执行</h3>
+        <div className="oc-activity-heading">
+          <span className="oc-activity-kind">BACKEND</span>
+          <div>
+            <h3>{item.backend}</h3>
+            <p>执行 {item.toolName}</p>
+          </div>
         </div>
         <StatusPill
           label={
@@ -494,43 +558,68 @@ function RuntimeTimelineItem({ item }: { item: TimelineRuntimeItem }) {
           pulse={item.state === "running"}
         />
       </header>
+      <div className="oc-activity-purpose">
+        <span className="oc-activity-section-label">动作</span>
+        <strong>
+          在 {item.backend} 中执行 {item.toolName}
+        </strong>
+      </div>
+      <div className="oc-backend-command">
+        <span>$</span>
+        <code>{backendCommandPreview(item.command)}</code>
+      </div>
       <dl className="oc-runtime-meta">
         <div>
-          <dt>workdir</dt>
+          <dt>工作目录</dt>
           <dd>{item.workdir}</dd>
         </div>
         <div>
-          <dt>exit</dt>
+          <dt>退出码</dt>
           <dd>{item.exitCode ?? (item.state === "running" ? "running" : "—")}</dd>
         </div>
         {item.durationLabel && (
           <div>
-            <dt>duration</dt>
+            <dt>耗时</dt>
             <dd>{item.durationLabel}</dd>
           </div>
         )}
       </dl>
+      <ActivityProcess steps={item.process} />
+      <div className="oc-activity-result" data-state={item.state}>
+        <span className="oc-activity-section-label">结果</span>
+        <strong>
+          {item.state === "running"
+            ? "Backend 正在执行"
+            : item.state === "completed"
+              ? `命令执行成功${item.exitCode === undefined ? "" : `，退出码 ${item.exitCode}`}`
+              : item.state === "timeout"
+                ? "命令执行超时"
+                : item.state === "cancelled"
+                  ? "Backend 操作已取消"
+                  : `命令执行失败${item.exitCode === undefined ? "" : `，退出码 ${item.exitCode}`}`}
+        </strong>
+      </div>
       <details>
-        <summary>argv · {item.command.length}</summary>
+        <summary>查看原始 argv · {item.command.length}</summary>
         <pre>{JSON.stringify(item.command, null, 2)}</pre>
       </details>
       {item.code && (
-        <details open>
+        <details>
           <summary>执行代码{item.commandTruncated ? " · 已截断" : ""}</summary>
           <pre>{item.code}</pre>
         </details>
       )}
       {(item.stdout || item.state === "running") && (
-        <details open>
-          <summary>stdout{item.stdoutTruncated ? " · 已截断" : ""}</summary>
+        <div className="oc-backend-output">
+          <span>stdout{item.stdoutTruncated ? " · 已截断" : ""}</span>
           <pre>{item.stdout || "等待输出…"}</pre>
-        </details>
+        </div>
       )}
       {item.stderr && (
-        <details open>
-          <summary>stderr{item.stderrTruncated ? " · 已截断" : ""}</summary>
+        <div className="oc-backend-output is-stderr">
+          <span>stderr{item.stderrTruncated ? " · 已截断" : ""}</span>
           <pre className="is-stderr">{item.stderr}</pre>
-        </details>
+        </div>
       )}
       {(item.redacted ||
         item.commandTruncated ||
@@ -547,7 +636,10 @@ function RuntimeTimelineItem({ item }: { item: TimelineRuntimeItem }) {
             : ""}
         </p>
       )}
-      <time>{item.occurredAtLabel}</time>
+      <footer>
+        <time>{item.occurredAtLabel}</time>
+        <span>{item.durationLabel ?? "执行中"}</span>
+      </footer>
     </article>
   );
 }
@@ -558,6 +650,45 @@ function parseTable(text: string, separator: "," | "\t"): string[][] {
     .filter(Boolean)
     .slice(0, 20)
     .map((line) => line.split(separator).slice(0, 12));
+}
+
+interface AnnotationPreviewRow {
+  readonly clusterId: string;
+  readonly generalType: string;
+  readonly subType: string;
+  readonly score: string;
+  readonly flags: string;
+  readonly requiresReview: boolean;
+}
+
+function annotationPreviewRows(value: unknown): AnnotationPreviewRow[] | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  const annotations = (value as Record<string, unknown>).cluster_annotations;
+  if (annotations === null || typeof annotations !== "object") return undefined;
+  return Object.entries(annotations as Record<string, unknown>)
+    .slice(0, 100)
+    .map(([clusterId, raw]) => {
+      const annotation =
+        raw !== null && typeof raw === "object"
+          ? (raw as Record<string, unknown>)
+          : {};
+      const numericScore = Number(annotation.cs_score ?? 0);
+      const flags = Array.isArray(annotation.flags)
+        ? annotation.flags.slice(0, 20).map(String)
+        : [];
+      const subType = String(annotation.sub_type ?? "Unknown");
+      return {
+        clusterId,
+        generalType: String(annotation.general_type ?? "Unknown"),
+        subType,
+        score: Number.isFinite(numericScore) ? numericScore.toFixed(1) : "—",
+        flags: flags.join(", ") || "—",
+        requiresReview:
+          numericScore < 60 ||
+          flags.length > 0 ||
+          subType.includes("(NeedsReview)"),
+      };
+    });
 }
 
 function boundedJson(value: unknown, depth = 0): unknown {
@@ -598,6 +729,7 @@ function ArtifactTimelineItem({
         readonly state: "ready";
         readonly text?: string;
         readonly rows?: readonly (readonly string[])[];
+        readonly annotationRows?: readonly AnnotationPreviewRow[];
         readonly imageUrl?: string;
       }
   >({ state: "idle" });
@@ -620,9 +752,14 @@ function ArtifactTimelineItem({
         if (controller.signal.aborted) return;
         if (item.previewMode === "json") {
           try {
+            const parsed = JSON.parse(text);
             setPreview({
               state: "ready",
-              text: JSON.stringify(boundedJson(JSON.parse(text)), null, 2),
+              text: JSON.stringify(boundedJson(parsed), null, 2),
+              annotationRows:
+                item.artifactKind === "cluster_annotations"
+                  ? annotationPreviewRows(parsed)
+                  : undefined,
             });
           } catch {
             setPreview({ state: "ready", text });
@@ -686,9 +823,46 @@ function ArtifactTimelineItem({
       {preview.state === "ready" && preview.imageUrl && (
         <img alt={item.name} loading="lazy" src={preview.imageUrl} />
       )}
-      {preview.state === "ready" && preview.text !== undefined && (
-        <pre>{preview.text}</pre>
+      {preview.state === "ready" && preview.annotationRows && (
+        <div className="oc-artifact-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Cluster</th>
+                <th>谱系</th>
+                <th>细胞类型</th>
+                <th>分数</th>
+                <th>Flags</th>
+                <th>复核</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.annotationRows.map((row) => (
+                <tr key={row.clusterId}>
+                  <td>{row.clusterId}</td>
+                  <td>{row.generalType}</td>
+                  <td>{row.subType}</td>
+                  <td>{row.score}</td>
+                  <td>{row.flags}</td>
+                  <td>{row.requiresReview ? "需要" : "否"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <details>
+            <summary>查看有界 JSON 证据</summary>
+            <pre>{preview.text}</pre>
+          </details>
+        </div>
       )}
+      {preview.state === "ready" &&
+        preview.text !== undefined &&
+        !preview.annotationRows &&
+        (item.mediaType === "text/markdown" ? (
+          <MessageContent content={preview.text} />
+        ) : (
+          <pre>{preview.text}</pre>
+        ))}
       {preview.state === "ready" && preview.rows && (
         <div className="oc-artifact-table-wrap">
           <table>
@@ -778,18 +952,19 @@ function Timeline({
     return (
       <div className="oc-timeline-empty">
         <div className="oc-empty-orbit">
-          <span>A</span>
-          <span>B</span>
+          <span>S</span>
+          <span>T</span>
           <i />
         </div>
         <h2>从一个明确的分析目标开始</h2>
         <p>
-          Agent 会按需调用 Graph A 数据分析与 Graph B
-          深度注释能力，并将可恢复的事实持续记录到时间线。
+          Agent 会根据目标直接回答、加载 Skill、调用 Tool，
+          并把 Backend 操作与结果持续记录到时间线。
         </p>
         <div className="oc-empty-capabilities">
-          <span>Graph A · 单细胞分析</span>
-          <span>Graph B · 深度注释</span>
+          <span>Skill · 方法与组合规则</span>
+          <span>Tool · 可验证科学操作</span>
+          <span>Backend · 命令与实时输出</span>
         </div>
       </div>
     );
@@ -801,10 +976,10 @@ function Timeline({
           return <MessageTimelineItem item={item} key={item.id} />;
         if (item.kind === "task")
           return <TaskTimelineItem item={item} key={item.id} />;
+        if (item.kind === "tool")
+          return <ToolTimelineItem item={item} key={item.id} />;
         if (item.kind === "skill")
           return <SkillTimelineItem item={item} key={item.id} />;
-        if (item.kind === "capability")
-          return <CapabilityTimelineItem item={item} key={item.id} />;
         if (item.kind === "runtime")
           return <RuntimeTimelineItem item={item} key={item.id} />;
         if (item.kind === "artifact")
@@ -851,46 +1026,49 @@ function TaskList({ tasks }: { tasks: readonly TaskViewModel[] }) {
   );
 }
 
-function CapabilityList({
-  capabilities,
+function ToolExecutionList({
+  toolExecutions,
 }: {
-  capabilities: readonly CapabilityViewModel[];
+  toolExecutions: readonly ToolExecutionViewModel[];
 }) {
-  if (!capabilities.length)
+  if (!toolExecutions.length)
     return (
       <InspectorEmpty
-        title="尚无能力调用"
-        description="只有已经进入事件日志的能力事实会显示在这里。"
+        title="尚无 Tool 调用"
+        description="已经进入执行生命周期的科学 Tool 会显示在这里。"
       />
     );
   return (
     <div className="oc-inspector-list">
-      {capabilities.map((capability) => (
+      {toolExecutions.map((tool) => (
         <article
           className="oc-inspector-capability"
-          data-family={capability.family}
-          key={capability.id}
+          data-family={tool.family}
+          key={tool.id}
         >
           <span className="oc-capability-monogram">
-            {capability.family === "graph_a"
-              ? "A"
-              : capability.family === "graph_b"
-                ? "B"
-                : "T"}
+            {{
+              inspect: "I",
+              transform: "T",
+              analyze: "A",
+              annotate: "N",
+              visualize: "V",
+              custom: "C",
+            }[tool.family]}
           </span>
           <div>
             <small>
-              {capability.name}
-              {capability.invocationCount
-                ? ` · ${capability.invocationCount} 次`
+              TOOL · {tool.name}
+              {tool.invocationCount
+                ? ` · ${tool.invocationCount} 次`
                 : ""}
             </small>
-            <strong>{capability.title}</strong>
-            <p>{capability.description}</p>
+            <strong>{tool.title}</strong>
+            <p>{tool.description}</p>
             <StatusPill
-              label={capability.stateLabel}
-              tone={workTone[capability.state]}
-              pulse={capability.state === "running"}
+              label={tool.stateLabel}
+              tone={workTone[tool.state]}
+              pulse={tool.state === "running"}
             />
           </div>
         </article>
@@ -911,7 +1089,7 @@ function ReviewList({
     return (
       <InspectorEmpty
         title="无需审核"
-        description="需要人工确认的能力调用会集中出现在这里。"
+        description="需要人工确认的 Tool 调用会集中出现在这里。"
       />
     );
   return (
@@ -1040,7 +1218,7 @@ function EventList({ events }: { events: readonly EventViewModel[] }) {
       {events.map((event) => (
         <li data-tone={event.tone} key={event.id}>
           <span className="oc-event-sequence" title={event.sequence}>
-            #{event.sequence}
+            {event.runId.slice(0, 8)} · #{event.sequence}
           </span>
           <div>
             <strong>{event.type}</strong>
@@ -1086,26 +1264,53 @@ function InspectorPanel({
   actions,
   onClose,
 }: ConversationWorkspaceProps & { onClose?: () => void }) {
-  const initialTab = model.reviews.some((review) => review.state === "pending")
+  const initialTab = model.reviews.some(
+    (review) =>
+      review.state === "pending" &&
+      (model.run === undefined || review.runId === model.run.id),
+  )
     ? "reviews"
     : "tasks";
   const [tab, setTab] = useState<InspectorTab>(initialTab);
+  const [scope, setScope] = useState<"run" | "conversation">("run");
+  const effectiveScope = model.run ? scope : "conversation";
+  const inScope = <T extends { readonly runId?: string }>(
+    items: readonly T[],
+  ): readonly T[] =>
+    effectiveScope === "conversation"
+      ? items
+      : items.filter((item) => item.runId === model.run?.id);
+  const scopedTasks = inScope(model.tasks);
+  const scopedToolExecutions = inScope(model.toolExecutions);
+  const scopedReviews = inScope(model.reviews);
+  const scopedArtifacts = inScope(model.artifacts);
+  const scopedEvents = inScope(model.events);
   const counts = useMemo(
     () => ({
-      tasks: model.tasks.length,
-      capabilities: model.capabilities.length,
-      reviews: model.reviews.length,
-      artifacts: model.artifacts.length,
-      events: model.events.length,
+      tasks: scopedTasks.length,
+      toolExecutions: scopedToolExecutions.length,
+      reviews: scopedReviews.length,
+      artifacts: scopedArtifacts.length,
+      events: scopedEvents.length,
     }),
-    [model],
+    [
+      scopedArtifacts,
+      scopedEvents,
+      scopedReviews,
+      scopedTasks,
+      scopedToolExecutions,
+    ],
   );
 
   return (
     <div className="oc-inspector-panel">
       <header className="oc-inspector-header">
         <div>
-          <small>RUN INSPECTOR</small>
+          <small>
+            {effectiveScope === "run"
+              ? `RUN ${model.run?.id.slice(0, 8)}`
+              : "CONVERSATION"}
+          </small>
           <h2>运行检查器</h2>
         </div>
         {onClose && (
@@ -1119,6 +1324,23 @@ function InspectorPanel({
           </button>
         )}
       </header>
+      <div className="oc-inspector-scope" role="group" aria-label="检查器作用域">
+        <button
+          className={effectiveScope === "run" ? "is-active" : ""}
+          disabled={!model.run}
+          onClick={() => setScope("run")}
+          type="button"
+        >
+          当前 Run
+        </button>
+        <button
+          className={effectiveScope === "conversation" ? "is-active" : ""}
+          onClick={() => setScope("conversation")}
+          type="button"
+        >
+          全部会话
+        </button>
+      </div>
       <div className="oc-inspector-tabs" role="tablist" aria-label="运行检查器">
         {(Object.keys(tabLabels) as InspectorTab[]).map((key) => (
           <button
@@ -1135,17 +1357,17 @@ function InspectorPanel({
         ))}
       </div>
       <div className="oc-inspector-body" role="tabpanel">
-        {tab === "tasks" && <TaskList tasks={model.tasks} />}
-        {tab === "capabilities" && (
-          <CapabilityList capabilities={model.capabilities} />
+        {tab === "tasks" && <TaskList tasks={scopedTasks} />}
+        {tab === "toolExecutions" && (
+          <ToolExecutionList toolExecutions={scopedToolExecutions} />
         )}
         {tab === "reviews" && (
-          <ReviewList reviews={model.reviews} actions={actions} />
+          <ReviewList reviews={scopedReviews} actions={actions} />
         )}
         {tab === "artifacts" && (
-          <ArtifactList artifacts={model.artifacts} actions={actions} />
+          <ArtifactList artifacts={scopedArtifacts} actions={actions} />
         )}
-        {tab === "events" && <EventList events={model.events} />}
+        {tab === "events" && <EventList events={scopedEvents} />}
       </div>
       <footer className="oc-inspector-footer">
         <span className="oc-authority-mark" />
@@ -1241,7 +1463,7 @@ function Composer({ model, actions }: ConversationWorkspaceProps) {
         </span>
         <span>
           {model.composer.disabledReason ||
-            "Agent 会按需选择能力；结果以持久化事件为准"}
+            "Agent 会按需直接回复、加载 Skill 或调用 Tool"}
         </span>
       </div>
     </form>

@@ -71,6 +71,9 @@ class EventType(StrEnum):
     RUN_CREATED = "run.created"
     RUN_STARTED = "run.started"
     AGENT_TURN_STARTED = "agent.turn_started"
+    AGENT_TOOL_STARTED = "agent.tool_started"
+    AGENT_TOOL_COMPLETED = "agent.tool_completed"
+    AGENT_TOOL_FAILED = "agent.tool_failed"
     MESSAGE_COMPLETED = "message.completed"
     TASK_CREATED = "task.created"
     TASK_UPDATED = "task.updated"
@@ -145,6 +148,27 @@ class AgentTurnStartedPayload(EventPayload):
     remaining_turns: int = Field(ge=0, le=10_000)
 
 
+class AgentToolStartedPayload(EventPayload):
+    tool_call_id: str = Field(min_length=1, max_length=255)
+    tool_name: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z][a-z0-9_]*$",
+    )
+    category: Literal["control", "skill", "domain"]
+
+
+class AgentToolCompletedPayload(AgentToolStartedPayload):
+    summary: str = Field(min_length=1, max_length=2_000)
+
+
+class AgentToolFailedPayload(AgentToolStartedPayload):
+    error_code: str = Field(min_length=1, max_length=128)
+    error_summary: str = Field(min_length=1, max_length=2_000)
+    retryable: bool
+    recovery_hint: str = Field(min_length=1, max_length=2_000)
+
+
 class MessageCompletedPayload(EventPayload):
     message_id: UUID
     role: MessageRole
@@ -193,6 +217,15 @@ class SkillLoadStartedPayload(EventPayload):
     )
     resource_kind: Literal["body", "reference", "example"]
     resource_name: str | None = Field(default=None, max_length=256)
+    skill_version: str | None = Field(
+        default=None,
+        max_length=32,
+        pattern=r"^[0-9]+\.[0-9]+$",
+    )
+    resource_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
     purpose: Literal[
         "domain_method",
         "validation_rules",
@@ -211,6 +244,11 @@ class SkillLoadCompletedPayload(EventPayload):
     )
     resource_kind: Literal["body", "reference", "example"]
     resource_name: str | None = Field(default=None, max_length=256)
+    skill_version: str = Field(
+        max_length=32,
+        pattern=r"^[0-9]+\.[0-9]+$",
+    )
+    resource_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     purpose: Literal[
         "domain_method",
         "validation_rules",
@@ -231,6 +269,15 @@ class SkillLoadFailedPayload(EventPayload):
     )
     resource_kind: Literal["body", "reference", "example"]
     resource_name: str | None = Field(default=None, max_length=256)
+    skill_version: str | None = Field(
+        default=None,
+        max_length=32,
+        pattern=r"^[0-9]+\.[0-9]+$",
+    )
+    resource_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
     purpose: Literal[
         "domain_method",
         "validation_rules",
@@ -238,7 +285,12 @@ class SkillLoadFailedPayload(EventPayload):
         "reference_lookup",
         "example_lookup",
     ]
-    error_code: Literal["skill_resource_unavailable"]
+    error_code: Literal[
+        "skill_resource_unavailable",
+        "skill_body_required",
+        "skill_context_limit_exceeded",
+        "skill_context_stale",
+    ]
     error_summary: str = Field(min_length=1, max_length=500)
 
 
@@ -251,7 +303,7 @@ class CapabilityCompletedPayload(EventPayload):
     )
     task_id: UUID | None = None
     attempt: int = Field(default=1, ge=1, le=100)
-    result_status: Literal["completed", "aborted"] | None = None
+    result_status: Literal["completed", "aborted", "skipped"] | None = None
     artifact_ids: list[UUID] = Field(default_factory=list, max_length=100)
     summary: str | None = Field(default=None, max_length=2_000)
 
@@ -494,6 +546,21 @@ class AgentTurnStartedEvent(PersistedEventEnvelope):
     payload: AgentTurnStartedPayload
 
 
+class AgentToolStartedEvent(PersistedEventEnvelope):
+    type: Literal[EventType.AGENT_TOOL_STARTED] = EventType.AGENT_TOOL_STARTED
+    payload: AgentToolStartedPayload
+
+
+class AgentToolCompletedEvent(PersistedEventEnvelope):
+    type: Literal[EventType.AGENT_TOOL_COMPLETED] = EventType.AGENT_TOOL_COMPLETED
+    payload: AgentToolCompletedPayload
+
+
+class AgentToolFailedEvent(PersistedEventEnvelope):
+    type: Literal[EventType.AGENT_TOOL_FAILED] = EventType.AGENT_TOOL_FAILED
+    payload: AgentToolFailedPayload
+
+
 class MessageCompletedEvent(PersistedEventEnvelope):
     type: Literal[EventType.MESSAGE_COMPLETED] = EventType.MESSAGE_COMPLETED
     payload: MessageCompletedPayload
@@ -613,6 +680,9 @@ PersistedEvent: TypeAlias = Annotated[
     RunCreatedEvent
     | RunStartedEvent
     | AgentTurnStartedEvent
+    | AgentToolStartedEvent
+    | AgentToolCompletedEvent
+    | AgentToolFailedEvent
     | MessageCompletedEvent
     | TaskCreatedEvent
     | TaskUpdatedEvent
@@ -674,6 +744,12 @@ def validate_transient_event(value: object) -> TransientEvent:
 __all__ = [
     "AgentTurnStartedEvent",
     "AgentTurnStartedPayload",
+    "AgentToolCompletedEvent",
+    "AgentToolCompletedPayload",
+    "AgentToolFailedEvent",
+    "AgentToolFailedPayload",
+    "AgentToolStartedEvent",
+    "AgentToolStartedPayload",
     "ArtifactCreatedEvent",
     "ArtifactCreatedPayload",
     "AssistantDeltaEvent",

@@ -9,13 +9,17 @@ from pathlib import Path
 
 from omnicell_agent.capabilities.bootstrap import DomainCapabilityLayer
 from omnicell_agent.capabilities.catalog import SkillCatalog
-from omnicell_agent.capabilities.graph_b import DeepCellAnnotationCapability
-from omnicell_agent.capabilities.graph_a import SingleCellAnalysisCapability
-from omnicell_agent.capabilities.graph_b import InspectMarkerContractCapability
+from omnicell_agent.capabilities.cell_annotation import (
+    CellAnnotationCapability,
+    InspectMarkerTableCapability,
+)
+from omnicell_agent.capabilities.exploratory_analysis import (
+    ExploratoryAnalysisCapability,
+)
 from omnicell_agent.capabilities.registry import CapabilityRegistry
 
 
-class BlockingGraphB:
+class BlockingAnnotationEngine:
     def invoke(self, state):
         del state
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
@@ -40,7 +44,7 @@ class BlockingGraphB:
             time.sleep(0.01)
 
 
-class BlockingGraphA:
+class BlockingExploratoryEngine:
     def invoke(self, state):
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         marker_relative = state["marker_table_path"][len("/app/data/") :]
@@ -61,34 +65,38 @@ class BlockingGraphA:
             time.sleep(0.01)
 
 
-def build_blocking_graph_b_layer() -> DomainCapabilityLayer:
+def build_blocking_annotation_layer() -> DomainCapabilityLayer:
     registry = CapabilityRegistry()
     registry.register(
-        DeepCellAnnotationCapability(graph_factory=lambda: BlockingGraphB())
+        CellAnnotationCapability(
+            graph_factory=lambda: BlockingAnnotationEngine()
+        )
     )
     return DomainCapabilityLayer(registry=registry, skills=SkillCatalog())
 
 
-def build_blocking_graph_a_layer() -> DomainCapabilityLayer:
+def build_blocking_exploratory_layer() -> DomainCapabilityLayer:
     registry = CapabilityRegistry()
     registry.register(
-        SingleCellAnalysisCapability(
-            graph_factory=lambda: BlockingGraphA(),
+        ExploratoryAnalysisCapability(
+            graph_factory=lambda: BlockingExploratoryEngine(),
             scope_factory=lambda _workspace: nullcontext(),
         )
     )
     return DomainCapabilityLayer(registry=registry, skills=SkillCatalog())
 
 
-def build_blocking_graph_a_docker_layer() -> DomainCapabilityLayer:
+def build_blocking_exploratory_docker_layer() -> DomainCapabilityLayer:
     registry = CapabilityRegistry()
     registry.register(
-        SingleCellAnalysisCapability(graph_factory=lambda: BlockingGraphA())
+        ExploratoryAnalysisCapability(
+            graph_factory=lambda: BlockingExploratoryEngine()
+        )
     )
     return DomainCapabilityLayer(registry=registry, skills=SkillCatalog())
 
 
-class SecretFailureCapability(InspectMarkerContractCapability):
+class SecretFailureCapability(InspectMarkerTableCapability):
     def invoke(self, request, context):
         del request, context
         raise RuntimeError(os.environ["OMNICELL_TEST_SECRET_FAILURE"])
@@ -100,7 +108,7 @@ def build_secret_failure_layer() -> DomainCapabilityLayer:
     return DomainCapabilityLayer(registry=registry, skills=SkillCatalog())
 
 
-class NoisyInspectCapability(InspectMarkerContractCapability):
+class NoisyInspectCapability(InspectMarkerTableCapability):
     def invoke(self, request, context):
         chunk = b"x" * (64 * 1024)
         for _ in range(64):
@@ -115,7 +123,7 @@ def build_noisy_inspect_layer() -> DomainCapabilityLayer:
     return DomainCapabilityLayer(registry=registry, skills=SkillCatalog())
 
 
-class ProvisionalFailureCapability(InspectMarkerContractCapability):
+class ProvisionalFailureCapability(InspectMarkerTableCapability):
     def invoke(self, request, context):
         del request, context
         invocation_id = os.environ["OMNICELL_CAPABILITY_INVOCATION_ID"]

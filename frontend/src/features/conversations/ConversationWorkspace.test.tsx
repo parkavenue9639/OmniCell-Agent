@@ -44,14 +44,21 @@ const readyModel: ConversationWorkspaceViewModel = {
       occurredAtLabel: "10:00",
     },
     {
-      id: "capability-a",
-      kind: "capability",
-      capability: "single_cell_analysis",
-      family: "graph_a",
-      title: "单细胞分析",
-      description: "执行数据分析与 marker 生成。",
+      id: "tool-a",
+      kind: "tool",
+      toolName: "cluster_cells",
+      family: "analyze",
+      title: "降维与细胞聚类",
+      purpose: "执行 PCA、邻居图与 Leiden 聚类",
       state: "completed",
-      stateLabel: "已完成",
+      stateLabel: "调用完成",
+      attempt: 1,
+      process: [
+        { label: "发起 Tool 调用", state: "completed" },
+        { label: "Tool 返回结果", state: "completed" },
+      ],
+      resultSummary: "生成 11 个 cluster",
+      artifactCount: 2,
       occurredAtLabel: "10:01",
     },
     {
@@ -62,18 +69,28 @@ const readyModel: ConversationWorkspaceViewModel = {
       purposeLabel: "加载领域方法",
       state: "completed",
       stateLabel: "已加载",
+      process: [
+        { label: "读取 Skill 正文", state: "completed" },
+        { label: "更新当前 Run 方法上下文", state: "completed" },
+      ],
       resultSummary: "已加载 2.0 KiB 方法上下文",
       occurredAtLabel: "10:02",
     },
     {
-      id: "capability-b",
-      kind: "capability",
-      capability: "deep_cell_annotation",
-      family: "graph_b",
-      title: "深度细胞注释",
-      description: "对 cluster 进行验证与评分。",
+      id: "tool-b",
+      kind: "tool",
+      toolName: "annotate_cell_clusters",
+      family: "annotate",
+      title: "细胞类型注释",
+      purpose: "完成 cluster 注释、验证与评分",
       state: "review_required",
       stateLabel: "等待审核",
+      attempt: 1,
+      process: [
+        { label: "发起 Tool 调用", state: "completed" },
+        { label: "等待人工审核", state: "pending" },
+      ],
+      artifactCount: 0,
       occurredAtLabel: "10:03",
     },
     {
@@ -81,7 +98,7 @@ const readyModel: ConversationWorkspaceViewModel = {
       kind: "review",
       reviewId: "review-1",
       title: "确认继续深度注释",
-      description: "该能力需要人工确认。",
+      description: "该 Tool 需要人工确认。",
       state: "pending",
       decisionPending: false,
       occurredAtLabel: "10:04",
@@ -90,27 +107,30 @@ const readyModel: ConversationWorkspaceViewModel = {
   tasks: [
     {
       id: "task-1",
+      runId: "run-1",
       title: "生成 marker",
       state: "completed",
       stateLabel: "已完成",
     },
   ],
-  capabilities: [
+  toolExecutions: [
     {
       id: "ca",
-      name: "single_cell_analysis",
-      family: "graph_a",
-      title: "Graph A",
-      description: "领域分析工作流",
+      runId: "run-1",
+      name: "cluster_cells",
+      family: "analyze",
+      title: "降维与细胞聚类",
+      description: "11 个 cluster",
       state: "completed",
       stateLabel: "已完成",
     },
     {
       id: "cb",
-      name: "deep_cell_annotation",
-      family: "graph_b",
-      title: "Graph B",
-      description: "领域注释工作流",
+      runId: "run-1",
+      name: "annotate_cell_clusters",
+      family: "annotate",
+      title: "细胞类型注释",
+      description: "等待人工审核",
       state: "review_required",
       stateLabel: "等待审核",
     },
@@ -118,9 +138,10 @@ const readyModel: ConversationWorkspaceViewModel = {
   reviews: [
     {
       id: "review-1",
-      title: "继续调用 Graph B",
+      runId: "run-1",
+      title: "继续执行细胞注释",
       description: "检查输入后决定。",
-      capabilityLabel: "deep_cell_annotation",
+      capabilityLabel: "annotate_cell_clusters",
       state: "pending",
       decisionPending: false,
     },
@@ -128,6 +149,7 @@ const readyModel: ConversationWorkspaceViewModel = {
   artifacts: [
     {
       id: "artifact-1",
+      runId: "run-1",
       name: "markers.json",
       kindLabel: "Marker",
       sizeLabel: "12 KB",
@@ -139,6 +161,7 @@ const readyModel: ConversationWorkspaceViewModel = {
   events: [
     {
       id: "event-1",
+      runId: "run-1",
       sequence: "9007199254740993",
       type: "review.requested",
       occurredAtLabel: "10:04",
@@ -179,15 +202,13 @@ describe("ConversationWorkspace", () => {
     );
 
     expect(screen.getByText("正在恢复事件连接")).toBeInTheDocument();
-    expect(
-      screen.getByText("Graph A · single_cell_analysis"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Graph B · deep_cell_annotation"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("SKILL · 渐进加载")).toBeInTheDocument();
+    expect(screen.getByText("cluster_cells")).toBeInTheDocument();
+    expect(screen.getAllByText("annotate_cell_clusters").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("TOOL")).toHaveLength(2);
+    expect(screen.getByText("SKILL")).toBeInTheDocument();
     expect(screen.getByText("pca-clustering")).toBeInTheDocument();
-    expect(screen.getByText("Skill 正文 · 加载领域方法")).toBeInTheDocument();
+    expect(screen.getByText("加载领域方法")).toBeInTheDocument();
+    expect(screen.getByText("生成 11 个 cluster")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "批准并继续" }));
     expect(onReviewDecision).toHaveBeenCalledWith("review-1", "approve");
@@ -286,7 +307,7 @@ describe("ConversationWorkspace", () => {
               id: "runtime-1",
               kind: "runtime",
               runtimeCommandId: "runtime-1",
-              capability: "run_pca_clustering",
+              toolName: "cluster_cells",
               backend: "local-docker-cli",
               command: ["python", "/app/data/request.py"],
               code: "print('clustered')",
@@ -300,6 +321,11 @@ describe("ConversationWorkspace", () => {
               stdoutTruncated: false,
               stderrTruncated: false,
               redacted: false,
+              process: [
+                { label: "启动 Backend 命令", state: "completed" },
+                { label: "接收执行输出", state: "completed" },
+                { label: "Backend 操作完成", state: "completed" },
+              ],
               occurredAtLabel: "10:05",
             },
             {
@@ -319,11 +345,113 @@ describe("ConversationWorkspace", () => {
       />,
     );
 
-    expect(screen.getByText("容器执行")).toBeInTheDocument();
-    expect(screen.getByText("print('clustered')")).toBeInTheDocument();
-    expect(screen.getByText("clustered")).toBeInTheDocument();
+    expect(screen.getByText("BACKEND")).toBeInTheDocument();
+    expect(screen.getByText("执行 cluster_cells")).toBeInTheDocument();
+    expect(
+      screen.getByText("在 local-docker-cli 中执行 cluster_cells"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Backend 操作完成")).toBeInTheDocument();
+    expect(screen.getByText("命令执行成功，退出码 0")).toBeInTheDocument();
+    expect(screen.getByText("print('clustered')").closest("details")).not.toHaveAttribute(
+      "open",
+    );
+    expect(screen.getByText("clustered").closest(".oc-backend-output")).toBeVisible();
     expect(await screen.findByText(/"clusters": 11/)).toBeInTheDocument();
     expect(onLoadArtifactContent).toHaveBeenCalledWith("artifact-json");
+  });
+
+  it("renders cluster annotation artifacts as a bounded domain table", async () => {
+    const onLoadArtifactContent = vi.fn().mockResolvedValue(
+      new Blob(
+        [
+          JSON.stringify({
+            cluster_annotations: {
+              "0": {
+                general_type: "Immune cells",
+                sub_type: "B cells",
+                cs_score: 92,
+                flags: [],
+                reasoning_chain: "bounded detail",
+              },
+              "1": {
+                general_type: "Immune cells",
+                sub_type: "Ambiguous (NeedsReview)",
+                cs_score: 55,
+                flags: ["low_self_consistency"],
+              },
+            },
+          }),
+        ],
+        { type: "application/json" },
+      ),
+    );
+    render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          timeline: [
+            {
+              id: "annotation-artifact",
+              kind: "artifact",
+              artifactId: "annotation-artifact",
+              name: "annotations.json",
+              artifactKind: "cluster_annotations",
+              mediaType: "application/json",
+              sizeLabel: "1.2 KiB",
+              previewMode: "json",
+              occurredAtLabel: "10:06",
+            },
+          ],
+        }}
+        actions={{ onLoadArtifactContent }}
+      />,
+    );
+
+    expect(await screen.findByText("B cells")).toBeInTheDocument();
+    expect(screen.getByText("Ambiguous (NeedsReview)")).toBeInTheDocument();
+    expect(screen.getByText("low_self_consistency")).toBeInTheDocument();
+    expect(screen.getAllByText("需要")).toHaveLength(1);
+    expect(screen.getByText("查看有界 JSON 证据")).toBeInTheDocument();
+  });
+
+  it("defaults the inspector to the current run and can switch scope", () => {
+    render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          toolExecutions: [
+            {
+              id: "current-tool",
+              runId: "run-1",
+              name: "cluster_cells",
+              family: "analyze",
+              title: "降维与细胞聚类",
+              description: "生成 11 个 cluster",
+              state: "failed",
+              stateLabel: "失败",
+            },
+            {
+              id: "old-tool",
+              runId: "run-old",
+              name: "inspect_dataset",
+              family: "inspect",
+              title: "检查当前数据集",
+              description: "Human PBMC",
+              state: "completed",
+              stateLabel: "已完成",
+            },
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Tool1/ }));
+    expect(screen.getByText("cluster_cells")).toBeInTheDocument();
+    expect(screen.queryByText("inspect_dataset")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "全部会话" }));
+    expect(screen.getByRole("tab", { name: /Tool2/ })).toBeInTheDocument();
+    expect(screen.getByText(/inspect_dataset/)).toBeInTheDocument();
   });
 
   it("does not fetch artifact content when preview policy selects fallback", () => {

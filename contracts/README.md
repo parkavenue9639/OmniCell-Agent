@@ -1,6 +1,6 @@
 # Contracts 边界
 
-本目录承载 backend 与 frontend 共同使用的版本化公共契约。Graph A/B 当前的 Python 内部 schema 继续留在 backend，不因 monorepo 迁移而移动到这里。
+本目录承载 backend 与 frontend 共同使用的版本化公共契约。领域能力内部使用的 Python 状态 schema 继续留在 backend，不因 monorepo 迁移而移动到这里，也不作为 Agent-facing 能力分类。
 
 Phase 7 已冻结 v1 契约快照，Phase 8 frontend 以此作为唯一公共契约来源：
 
