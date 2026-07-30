@@ -59,7 +59,22 @@ def validator_node(state: ClusterAnnotationState) -> Dict[str, Any]:
         or sub_type.startswith("Error")
     ):
         logger.warning(f"[Cluster {cluster_id}] 无有效鉴定结果可供审计，给出顶额惩罚。")
-        return {"quality_scores": {"validator_penalty": 50}}
+        existing_scores = state.get("quality_scores", {})
+        new_scores = (
+            dict(existing_scores)
+            if isinstance(existing_scores, dict)
+            else {}
+        )
+        new_scores.update(
+            {
+                "validator_penalty": 50,
+                "validator_supported": False,
+                "validator_failed": False,
+            }
+        )
+        return {
+            "quality_scores": new_scores
+        }
 
     system_prompt = (
         "You are an independent reviewer of a provisional single-cell cluster annotation. "
@@ -109,7 +124,13 @@ def validator_node(state: ClusterAnnotationState) -> Dict[str, Any]:
 
         existing_scores = state.get("quality_scores", {})
         new_scores = dict(existing_scores) if isinstance(existing_scores, dict) else {}
-        new_scores["validator_penalty"] = result.confidence_penalty
+        new_scores["validator_penalty"] = (
+            result.confidence_penalty
+            if result.is_supported
+            else 50
+        )
+        new_scores["validator_supported"] = result.is_supported
+        new_scores["validator_failed"] = False
 
         return {
             "quality_scores": new_scores,
@@ -117,4 +138,17 @@ def validator_node(state: ClusterAnnotationState) -> Dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"[Cluster {cluster_id}] Validator 运行崩溃: {e}")
-        return {"quality_scores": {"validator_penalty": 25}}
+        existing_scores = state.get("quality_scores", {})
+        new_scores = (
+            dict(existing_scores)
+            if isinstance(existing_scores, dict)
+            else {}
+        )
+        new_scores.update(
+            {
+                "validator_penalty": 50,
+                "validator_supported": False,
+                "validator_failed": True,
+            }
+        )
+        return {"quality_scores": new_scores}

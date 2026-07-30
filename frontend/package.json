@@ -20,6 +20,7 @@
     "test:api": "vitest run src/api",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:live": "../.venv/bin/python ../scripts/test_live_e2e.py",
+    "test:e2e:live:inspect": "../.venv/bin/python ../scripts/test_live_e2e.py --inspect",
     "build": "npm run contracts:check && tsc -b && vite build"
   },
   "dependencies": {

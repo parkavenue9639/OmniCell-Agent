@@ -1,4 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ConversationWorkspace } from "./ConversationWorkspace";
@@ -175,6 +181,16 @@ const readyModel: ConversationWorkspaceViewModel = {
       ],
     },
   ],
+  memory: {
+    available: true,
+    loading: false,
+    useMemory: false,
+    generateCandidates: false,
+    enableAgentTools: false,
+    providerConsentGranted: false,
+    items: [],
+    commandsPending: false,
+  },
   commands: {
     createConversationPending: false,
     importDatasetPending: false,
@@ -220,7 +236,10 @@ describe("ConversationWorkspace", () => {
       target: { value: "比较不同 cluster" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送分析指令" }));
-    expect(onSubmit).toHaveBeenCalledWith("比较不同 cluster");
+    expect(onSubmit).toHaveBeenCalledWith("比较不同 cluster", {
+      mode: "off",
+      refs: [],
+    });
 
     fireEvent.click(screen.getByRole("tab", { name: /产物/ }));
     fireEvent.click(screen.getByRole("button", { name: "下载 markers.json" }));
@@ -292,6 +311,1006 @@ describe("ConversationWorkspace", () => {
     expect(screen.getByText("artifact-1").tagName).toBe("CODE");
     expect(screen.getByText("<script>unsafe</script>")).toBeInTheDocument();
     expect(document.querySelector("script")).toBeNull();
+  });
+
+  it("renders plain-language memory activities with inline confirmation and no plaintext body", () => {
+    const onApproveMemory = vi.fn().mockResolvedValue(true);
+    const onForgetMemory = vi.fn().mockResolvedValue(true);
+    const onPurgeMemory = vi.fn().mockResolvedValue(true);
+    const proposalContent = `第一行偏好。\n${"长期内容".repeat(80)}\n最后一行。`;
+    const identityWithIgnoredBody = {
+      itemId: "memory-proposal",
+      versionId: "version-proposal",
+      version: 1,
+      kind: "project_context" as const,
+      source: "proposed",
+      reason: "tool_search",
+      body: "PRIVATE MEMORY BODY",
+    };
+    render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          timeline: [
+            {
+              id: "memory-snapshot",
+              kind: "memory",
+              operation: "snapshot",
+              mode: "default",
+              outcome: "loaded",
+              title: "检查相关记忆",
+              description: "回答当前问题前自动检查长期记忆",
+              actionSummary: "选择与当前问题相关的记忆",
+              stateLabel: "已加载",
+              process: [
+                {
+                  label: "冻结当前 Run 的记忆选择",
+                  state: "completed",
+                },
+              ],
+              resultSummary: "已加载 1 个精确记忆版本",
+              identities: [
+                {
+                  itemId: "memory-snapshot",
+                  versionId: "version-snapshot",
+                  version: 2,
+                  kind: "response_preference",
+                  source: "explicit",
+                  reason: "default",
+                },
+              ],
+              occurredAtLabel: "10:01",
+            },
+            {
+              id: "memory-search",
+              kind: "memory",
+              operation: "search",
+              outcome: "empty",
+              title: "继续查找历史背景",
+              description: "Agent 发现还需要更多背景",
+              actionSummary: "继续查找相关内容",
+              stateLabel: "无匹配记忆",
+              process: [
+                { label: "发起记忆身份搜索", state: "completed" },
+                { label: "保持当前记忆上下文不变", state: "completed" },
+              ],
+              resultSummary: "没有找到可用记忆",
+              identities: [],
+              occurredAtLabel: "10:02",
+            },
+            {
+              id: "memory-proposal",
+              kind: "memory",
+              operation: "proposal",
+              outcome: "proposed",
+              title: "有一条记忆待确认",
+              description: "Agent 整理了一条可供未来使用的记忆",
+              actionSummary: "确认后才会在未来对话中使用",
+              stateLabel: "待确认",
+              process: [
+                { label: "登记不可变候选版本", state: "completed" },
+                { label: "等待用户确认", state: "pending" },
+              ],
+              resultSummary: "候选记忆已创建，但尚未成为 active 记忆",
+              identities: [identityWithIgnoredBody],
+              occurredAtLabel: "10:03",
+            },
+            {
+              id: "memory-forget",
+              kind: "memory",
+              operation: "forget",
+              outcome: "confirmation_required",
+              title: "确认忘记这条内容",
+              description: "确认后未来对话不再使用",
+              actionSummary: "先确认目标，避免误删",
+              stateLabel: "等待确认",
+              process: [
+                { label: "定位精确记忆版本", state: "completed" },
+                { label: "等待用户选择撤销或彻底删除", state: "pending" },
+              ],
+              resultSummary: "当前记忆尚未被撤销或清除",
+              identities: [
+                {
+                  itemId: "memory-forget",
+                  versionId: "version-forget",
+                  version: 4,
+                  kind: "scientific_observation",
+                  source: "corrected",
+                  reason: "tool_search",
+                },
+              ],
+              occurredAtLabel: "10:04",
+            },
+          ],
+          memory: {
+            ...readyModel.memory,
+            items: [
+              {
+                id: "memory-proposal",
+                stableKey: "project.proposal",
+                kind: "project_context",
+                kindLabel: "项目上下文",
+                status: "proposed",
+                statusLabel: "待确认",
+                version: 1,
+                versionId: "version-proposal",
+                content: proposalContent,
+                sourceLabel: "Agent 提议",
+                createdAtLabel: "10:03",
+                updatedAtLabel: "10:03",
+                canApprove: true,
+                canCorrect: false,
+                canForget: false,
+                canPurge: true,
+              },
+              {
+                id: "memory-forget",
+                stableKey: "scientific.forget",
+                kind: "scientific_observation",
+                kindLabel: "科研观察",
+                status: "active",
+                statusLabel: "已生效",
+                version: 4,
+                versionId: "version-forget",
+                content: "仅用于测试当前遗忘状态",
+                sourceLabel: "已纠正",
+                createdAtLabel: "09:00",
+                updatedAtLabel: "10:04",
+                canApprove: false,
+                canCorrect: true,
+                canForget: true,
+                canPurge: true,
+              },
+            ],
+          },
+        }}
+        actions={{ onApproveMemory, onForgetMemory, onPurgeMemory }}
+      />,
+    );
+
+    expect(screen.getAllByText("BACKEND")).toHaveLength(1);
+    expect(screen.getAllByText("TOOL")).toHaveLength(3);
+    expect(screen.getByText("Tool · search_memory")).toBeVisible();
+    expect(screen.getByText("Tool · propose_memory")).toBeVisible();
+    expect(screen.getByText("Tool · forget_memory")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "检查相关记忆" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "继续查找历史背景" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "有一条记忆待确认" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "确认忘记这条内容" })).toBeVisible();
+    expect(screen.getByText("等待用户确认")).toBeVisible();
+    expect(screen.getByText("当前记忆尚未被撤销或清除")).toBeVisible();
+    expect(screen.getAllByText("动作")).toHaveLength(4);
+    expect(screen.getAllByText("过程")).toHaveLength(4);
+    expect(screen.getAllByText("结果")).toHaveLength(4);
+    expect(screen.queryByText("PRIVATE MEMORY BODY")).not.toBeInTheDocument();
+    expect(screen.getByText("将完整保存的来源消息")).toBeVisible();
+    expect(
+      screen.getByText(
+        `共 ${Array.from(proposalContent).length} 字 · 当前预览前 280 字`,
+      ),
+    ).toBeVisible();
+    const proposalPreview = document.querySelector(
+      '[data-operation="proposal"] .oc-memory-confirm-preview > p',
+    );
+    expect(proposalPreview?.textContent).toContain("\n");
+    expect(proposalPreview?.textContent).toHaveLength(281);
+    fireEvent.click(screen.getByText("查看完整原文"));
+    expect(
+      document.querySelector(
+        '[data-operation="proposal"] .oc-memory-full-content',
+      )?.textContent,
+    ).toBe(proposalContent);
+    expect(screen.getByText("要忘记的内容")).toBeVisible();
+    expect(screen.getByText("仅用于测试当前遗忘状态")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "不采用并清除" }));
+    expect(onPurgeMemory).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("候选正文会被清除，原始对话仍会保留。"),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "确认不采用并清除" }),
+    );
+    expect(onPurgeMemory).toHaveBeenCalledWith("memory-proposal", 1);
+    fireEvent.click(screen.getByRole("button", { name: "确认记住" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认忘记" }));
+    expect(onApproveMemory).toHaveBeenCalledWith("memory-proposal", 1);
+    expect(onForgetMemory).toHaveBeenCalledWith("memory-forget", 4);
+  });
+
+  it("reconciles historical memory requests with the current resource state", () => {
+    render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          timeline: [
+            {
+              id: "proposal-resolved",
+              kind: "memory",
+              operation: "proposal",
+              outcome: "proposed",
+              title: "有一条记忆待确认",
+              description: "历史提议",
+              actionSummary: "等待确认",
+              stateLabel: "待确认",
+              process: [
+                { label: "创建候选", state: "completed" },
+                { label: "等待你的确认", state: "pending" },
+              ],
+              resultSummary: "尚未保存",
+              identities: [
+                {
+                  itemId: "proposal-current",
+                  versionId: "proposal-version",
+                  version: 1,
+                  kind: "response_preference",
+                  source: "proposed",
+                  reason: "tool_search",
+                },
+              ],
+              occurredAtLabel: "10:00",
+            },
+            {
+              id: "forget-resolved",
+              kind: "memory",
+              operation: "forget",
+              outcome: "confirmation_required",
+              title: "确认忘记这条内容",
+              description: "历史遗忘请求",
+              actionSummary: "等待确认",
+              stateLabel: "等待确认",
+              process: [
+                { label: "定位记忆", state: "completed" },
+                { label: "等待你的确认", state: "pending" },
+              ],
+              resultSummary: "尚未忘记",
+              identities: [
+                {
+                  itemId: "forget-current",
+                  versionId: "forget-version",
+                  version: 2,
+                  kind: "project_context",
+                  source: "explicit",
+                  reason: "tool_search",
+                },
+              ],
+              occurredAtLabel: "10:01",
+            },
+          ],
+          memory: {
+            ...readyModel.memory,
+            items: [
+              {
+                id: "proposal-current",
+                stableKey: "preference.current",
+                kind: "response_preference",
+                kindLabel: "回复偏好",
+                status: "active",
+                statusLabel: "已生效",
+                version: 1,
+                versionId: "proposal-version",
+                content: "回答时先给结论",
+                sourceLabel: "Agent 提议",
+                createdAtLabel: "10:00",
+                updatedAtLabel: "10:02",
+                canApprove: false,
+                canCorrect: true,
+                canForget: true,
+                canPurge: true,
+              },
+              {
+                id: "forget-current",
+                stableKey: "project.forgotten",
+                kind: "project_context",
+                kindLabel: "项目上下文",
+                status: "revoked",
+                statusLabel: "已遗忘",
+                version: 2,
+                versionId: "forget-version",
+                content: "旧项目背景",
+                sourceLabel: "显式创建",
+                createdAtLabel: "09:00",
+                updatedAtLabel: "10:02",
+                canApprove: false,
+                canCorrect: true,
+                canForget: false,
+                canPurge: true,
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "已记住这条内容" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "已忘记这条内容" }),
+    ).toBeVisible();
+    expect(screen.getByText("已确认记住")).toBeVisible();
+    expect(screen.getByText("已确认忘记")).toBeVisible();
+    expect(
+      screen.getByText("已确认；未来相关对话可以使用这条记忆"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("已确认；未来对话不再使用这条记忆"),
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: "确认记住" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认忘记" })).not.toBeInTheDocument();
+  });
+
+  it("renders purged proposals as rejected and missing resources as unverifiable", () => {
+    const proposal = (
+      id: string,
+      itemId: string,
+      versionId: string,
+    ) =>
+      ({
+        id,
+        kind: "memory",
+        operation: "proposal",
+        outcome: "proposed",
+        title: "有一条记忆待确认",
+        description: "历史提议",
+        actionSummary: "等待确认",
+        stateLabel: "待确认",
+        process: [
+          { label: "创建候选", state: "completed" },
+          { label: "等待你的确认", state: "pending" },
+        ],
+        resultSummary: "尚未采用",
+        identities: [
+          {
+            itemId,
+            versionId,
+            version: 1,
+            kind: "response_preference",
+            source: "proposed",
+            reason: "tool_search",
+          },
+        ],
+        occurredAtLabel: "10:00",
+      }) as const;
+
+    render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          timeline: [
+            proposal("proposal-rejected", "memory-rejected", "version-old"),
+            proposal("proposal-missing", "memory-missing", "version-missing"),
+          ],
+          memory: {
+            ...readyModel.memory,
+            items: [
+              {
+                id: "memory-rejected",
+                stableKey: "preference.rejected",
+                kind: "response_preference",
+                kindLabel: "回复偏好",
+                status: "purged",
+                statusLabel: "已清除",
+                sourceLabel: "Agent 候选",
+                createdAtLabel: "10:00",
+                updatedAtLabel: "10:01",
+                canApprove: false,
+                canCorrect: false,
+                canForget: false,
+                canPurge: false,
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "已拒绝这条记忆候选" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText("已拒绝并清除候选"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "当前无法核对记忆状态" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText("无法读取对应的记忆资源；请稍后重试记忆服务"),
+    ).toBeVisible();
+  });
+
+  it("scopes memory command progress and failures to the target card", () => {
+    const timeline: ConversationWorkspaceViewModel["timeline"] = [
+      {
+        id: "proposal-other",
+        kind: "memory",
+        operation: "proposal",
+        outcome: "proposed",
+        title: "有一条记忆待确认",
+        description: "候选",
+        actionSummary: "等待确认",
+        stateLabel: "待确认",
+        process: [{ label: "等待你的确认", state: "pending" }],
+        resultSummary: "尚未采用",
+        identities: [
+          {
+            itemId: "memory-other",
+            versionId: "version-other",
+            version: 1,
+            kind: "profile_fact",
+            source: "proposed",
+            reason: "tool_search",
+          },
+        ],
+        occurredAtLabel: "09:59",
+      },
+      {
+        id: "proposal-target",
+        kind: "memory",
+        operation: "proposal",
+        outcome: "proposed",
+        title: "有一条记忆待确认",
+        description: "候选",
+        actionSummary: "等待确认",
+        stateLabel: "待确认",
+        process: [{ label: "等待你的确认", state: "pending" }],
+        resultSummary: "尚未采用",
+        identities: [
+          {
+            itemId: "memory-target",
+            versionId: "version-target",
+            version: 1,
+            kind: "profile_fact",
+            source: "proposed",
+            reason: "tool_search",
+          },
+        ],
+        occurredAtLabel: "10:00",
+      },
+    ];
+    const items: ConversationWorkspaceViewModel["memory"]["items"] = [
+      {
+        id: "memory-other",
+        stableKey: "profile.other",
+        kind: "profile_fact",
+        kindLabel: "个人事实",
+        status: "proposed",
+        statusLabel: "待确认",
+        version: 1,
+        versionId: "version-other",
+        content: "候选 A",
+        sourceLabel: "Agent 候选",
+        createdAtLabel: "09:59",
+        updatedAtLabel: "09:59",
+        canApprove: true,
+        canCorrect: true,
+        canForget: true,
+        canPurge: true,
+      },
+      {
+        id: "memory-target",
+        stableKey: "profile.target",
+        kind: "profile_fact",
+        kindLabel: "个人事实",
+        status: "proposed",
+        statusLabel: "待确认",
+        version: 1,
+        versionId: "version-target",
+        content: "候选 B",
+        sourceLabel: "Agent 候选",
+        createdAtLabel: "10:00",
+        updatedAtLabel: "10:00",
+        canApprove: true,
+        canCorrect: true,
+        canForget: true,
+        canPurge: true,
+      },
+    ];
+    const { rerender } = render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          timeline,
+          memory: {
+            ...readyModel.memory,
+            commandsPending: true,
+            command: {
+              kind: "purge",
+              memoryId: "memory-target",
+              pending: true,
+            },
+            items,
+          },
+        }}
+      />,
+    );
+
+    const otherPendingCard = screen.getByText("候选 A", { exact: true }).closest(
+      "article",
+    )!;
+    const targetPendingCard = screen.getByText("候选 B", { exact: true }).closest(
+      "article",
+    )!;
+    expect(
+      within(otherPendingCard).queryByText("正在拒绝并清除", { exact: true }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(targetPendingCard).getByText("正在拒绝并清除", { exact: true }),
+    ).toBeVisible();
+    expect(
+      within(otherPendingCard).getByRole("button", {
+        name: "确认记住",
+      }),
+    ).toBeDisabled();
+    expect(
+      within(targetPendingCard).getByRole("button", {
+        name: "不采用并清除",
+      }),
+    ).toBeDisabled();
+
+    rerender(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          timeline,
+          memory: {
+            ...readyModel.memory,
+            commandErrorMessage: "版本已经变化，请刷新后重试",
+            commandsPending: false,
+            command: {
+              kind: "purge",
+              memoryId: "memory-target",
+              pending: false,
+              errorMessage: "版本已经变化，请刷新后重试",
+            },
+            items,
+          },
+        }}
+      />,
+    );
+
+    const otherFailedCard = screen.getByText("候选 A", { exact: true }).closest(
+      "article",
+    )!;
+    const targetFailedCard = screen.getByText("候选 B", { exact: true }).closest(
+      "article",
+    )!;
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "记忆操作未完成版本已经变化，请刷新后重试",
+    );
+    expect(
+      within(otherFailedCard).queryByText(
+        "错误：版本已经变化，请刷新后重试",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      within(targetFailedCard).getByText(
+        "错误：版本已经变化，请刷新后重试",
+      ),
+    ).toBeVisible();
+    expect(
+      within(targetFailedCard).getByRole("button", {
+        name: "不采用并清除",
+      }),
+    ).toBeEnabled();
+  });
+
+  it("renders a later revoked proposal as forgotten instead of rejected", () => {
+    render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          timeline: [
+            {
+              id: "proposal-later-forgotten",
+              kind: "memory",
+              operation: "proposal",
+              outcome: "proposed",
+              title: "有一条记忆待确认",
+              description: "候选",
+              actionSummary: "等待确认",
+              stateLabel: "待确认",
+              process: [{ label: "等待你的确认", state: "pending" }],
+              resultSummary: "尚未采用",
+              identities: [
+                {
+                  itemId: "memory-later-forgotten",
+                  versionId: "version-later-forgotten",
+                  version: 1,
+                  kind: "response_preference",
+                  source: "proposed",
+                  reason: "tool_search",
+                },
+              ],
+              occurredAtLabel: "10:00",
+            },
+          ],
+          memory: {
+            ...readyModel.memory,
+            items: [
+              {
+                id: "memory-later-forgotten",
+                stableKey: "preference.later-forgotten",
+                kind: "response_preference",
+                kindLabel: "回复偏好",
+                status: "revoked",
+                statusLabel: "已遗忘",
+                version: 1,
+                versionId: "version-later-forgotten",
+                content: "回答时先给结论",
+                sourceLabel: "Agent 候选",
+                createdAtLabel: "10:00",
+                updatedAtLabel: "10:05",
+                canApprove: false,
+                canCorrect: true,
+                canForget: false,
+                canPurge: true,
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "已忘记这条内容" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "已拒绝这条记忆候选" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses command kind to target only the matching card for one item", () => {
+    const sharedIdentity = {
+      itemId: "memory-shared",
+      versionId: "version-shared",
+      version: 1,
+      kind: "response_preference" as const,
+      source: "proposed",
+      reason: "tool_search",
+    };
+    render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          timeline: [
+            {
+              id: "proposal-shared",
+              kind: "memory",
+              operation: "proposal",
+              outcome: "proposed",
+              title: "有一条记忆待确认",
+              description: "候选",
+              actionSummary: "等待确认",
+              stateLabel: "待确认",
+              process: [{ label: "等待你的确认", state: "pending" }],
+              resultSummary: "尚未采用",
+              identities: [sharedIdentity],
+              occurredAtLabel: "10:00",
+            },
+            {
+              id: "forget-shared",
+              kind: "memory",
+              operation: "forget",
+              outcome: "confirmation_required",
+              title: "确认忘记这条内容",
+              description: "遗忘请求",
+              actionSummary: "等待确认",
+              stateLabel: "等待确认",
+              process: [{ label: "等待你的确认", state: "pending" }],
+              resultSummary: "尚未忘记",
+              identities: [sharedIdentity],
+              occurredAtLabel: "10:05",
+            },
+          ],
+          memory: {
+            ...readyModel.memory,
+            commandsPending: true,
+            command: {
+              kind: "forget",
+              memoryId: "memory-shared",
+              pending: true,
+            },
+            items: [
+              {
+                id: "memory-shared",
+                stableKey: "preference.shared",
+                kind: "response_preference",
+                kindLabel: "回复偏好",
+                status: "active",
+                statusLabel: "已生效",
+                version: 1,
+                versionId: "version-shared",
+                content: "回答时先给结论",
+                sourceLabel: "Agent 候选",
+                createdAtLabel: "10:00",
+                updatedAtLabel: "10:01",
+                canApprove: false,
+                canCorrect: true,
+                canForget: true,
+                canPurge: true,
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    const proposalCard = screen
+      .getByRole("heading", { name: "已记住这条内容" })
+      .closest("article")!;
+    const forgetCard = screen
+      .getByRole("heading", { name: "确认忘记这条内容" })
+      .closest("article")!;
+    expect(
+      within(proposalCard).queryByText("正在确认忘记", { exact: true }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(forgetCard).getByText("正在确认忘记", { exact: true }),
+    ).toBeVisible();
+  });
+
+  it("automatically uses default memory for every submission after one-time enablement", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(true);
+    render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          memory: {
+            ...readyModel.memory,
+            useMemory: true,
+            generateCandidates: true,
+            enableAgentTools: true,
+            providerConsentGranted: true,
+          },
+        }}
+        actions={{ onSubmit }}
+      />,
+    );
+
+    expect(screen.queryByLabelText("本次运行记忆模式")).not.toBeInTheDocument();
+    expect(screen.getByText("记忆已开启")).toBeVisible();
+    fireEvent.change(screen.getByRole("textbox", { name: "分析指令" }), {
+      target: { value: "第一轮问题" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送分析指令" }));
+
+    expect(onSubmit).toHaveBeenCalledWith("第一轮问题", {
+      mode: "default",
+      refs: [],
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "分析指令" })).toHaveValue(""),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "分析指令" }), {
+      target: { value: "第二轮问题" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送分析指令" }));
+    expect(onSubmit).toHaveBeenLastCalledWith("第二轮问题", {
+      mode: "default",
+      refs: [],
+    });
+  });
+
+  it("exposes one memory switch while keeping internal gates out of the normal UI", () => {
+    render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          memory: {
+            ...readyModel.memory,
+            useMemory: true,
+            generateCandidates: true,
+            enableAgentTools: true,
+            providerConsentGranted: true,
+          },
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /记忆/ }));
+    expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+    expect(screen.getByRole("checkbox", { name: /跨会话记忆/ })).toBeChecked();
+    expect(
+      screen.getByText(/主动提出记忆候选/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/主动提议值得长期保留的信息/),
+    ).toBeVisible();
+    expect(
+      screen.queryByText(/直接对 Agent 说“记住/),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("生成记忆候选")).not.toBeInTheDocument();
+    expect(screen.queryByText("启用 Agent 记忆 Tool")).not.toBeInTheDocument();
+  });
+
+  it("unmounts correction plaintext when a memory becomes purged", () => {
+    const secretBody = "只应存在于旧版本的敏感正文";
+    const actions = { onCorrectMemory: vi.fn().mockResolvedValue(true) };
+    const activeItem = {
+      id: "memory-purge",
+      stableKey: "profile.private",
+      kind: "profile_fact",
+      kindLabel: "个人事实",
+      status: "active",
+      statusLabel: "已生效",
+      version: 1,
+      versionId: "version-before-purge",
+      content: secretBody,
+      sourceLabel: "显式创建",
+      createdAtLabel: "10:00",
+      updatedAtLabel: "10:00",
+      canApprove: false,
+      canCorrect: true,
+      canForget: true,
+      canPurge: true,
+    } as const;
+    const { rerender } = render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          memory: { ...readyModel.memory, items: [activeItem] },
+        }}
+        actions={actions}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /记忆/ }));
+    fireEvent.click(screen.getByRole("button", { name: "纠正" }));
+    expect(screen.getByRole("textbox", { name: "新版本正文" })).toHaveValue(
+      secretBody,
+    );
+
+    rerender(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          memory: {
+            ...readyModel.memory,
+            items: [
+              {
+                ...activeItem,
+                status: "purged",
+                statusLabel: "已清除",
+                version: undefined,
+                versionId: undefined,
+                content: undefined,
+                contentSha256: undefined,
+                canCorrect: false,
+                canForget: false,
+                canPurge: false,
+              },
+            ],
+          },
+        }}
+        actions={actions}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("textbox", { name: "新版本正文" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(secretBody)).not.toBeInTheDocument();
+    expect(screen.getByText("已清除记录 · 1")).toBeVisible();
+    expect(
+      screen.queryByText("这条记忆已被清除，正文不可用。"),
+    ).not.toBeVisible();
+    fireEvent.click(screen.getByText("已清除记录 · 1"));
+    expect(
+      screen.getByText("这条记忆已被清除，正文不可用。"),
+    ).toBeVisible();
+  });
+
+  it("blocks run submission while a memory command is being persisted", () => {
+    const onSubmit = vi.fn().mockResolvedValue(true);
+    render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          memory: {
+            ...readyModel.memory,
+            commandsPending: true,
+          },
+        }}
+        actions={{ onSubmit }}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "分析指令" }), {
+      target: { value: "不要与正在提交的授权发生竞态" },
+    });
+
+    expect(
+      screen.getByRole("button", { name: "发送分析指令" }),
+    ).toBeDisabled();
+    expect(screen.getByText("记忆设置正在确认，完成后才能发送")).toBeVisible();
+    fireEvent.submit(screen.getByRole("textbox", { name: "分析指令" }).closest("form")!);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("requires explicit provider consent before enabling memory", () => {
+    const onGrantMemoryConsentAndEnable = vi.fn().mockResolvedValue(true);
+    render(
+      <ConversationWorkspace
+        model={readyModel}
+        actions={{ onGrantMemoryConsentAndEnable }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /记忆/ }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /跨会话记忆/ }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "开启长期记忆" }),
+    ).toBeInTheDocument();
+    expect(onGrantMemoryConsentAndEnable).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "开启" }));
+    expect(onGrantMemoryConsentAndEnable).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed to memory off when the Memory API is unavailable", () => {
+    const onSubmit = vi.fn().mockResolvedValue(true);
+    render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          memory: {
+            ...readyModel.memory,
+            available: false,
+            errorMessage: "connection refused",
+            useMemory: true,
+            providerConsentGranted: true,
+          },
+        }}
+        actions={{ onSubmit }}
+      />,
+    );
+
+    expect(
+      screen.getByText("记忆未启用").closest(".oc-composer-memory"),
+    ).toHaveTextContent("服务不可用，本次按普通会话执行");
+    fireEvent.change(screen.getByRole("textbox", { name: "分析指令" }), {
+      target: { value: "普通问答" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送分析指令" }));
+    expect(onSubmit).toHaveBeenCalledWith("普通问答", {
+      mode: "off",
+      refs: [],
+    });
+  });
+
+  it.each([
+    ["读取门禁关闭", { useMemory: false }],
+    ["候选门禁关闭", { generateCandidates: false }],
+    ["Agent Tool 门禁关闭", { enableAgentTools: false }],
+    ["provider 授权缺失", { providerConsentGranted: false }],
+  ])("fails closed to off when %s", (_, override) => {
+    const onSubmit = vi.fn().mockResolvedValue(true);
+    render(
+      <ConversationWorkspace
+        model={{
+          ...readyModel,
+          memory: {
+            ...readyModel.memory,
+            useMemory: true,
+            generateCandidates: true,
+            enableAgentTools: true,
+            providerConsentGranted: true,
+            ...override,
+          },
+        }}
+        actions={{ onSubmit }}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "分析指令" }), {
+      target: { value: "保持普通会话" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送分析指令" }));
+    expect(onSubmit).toHaveBeenCalledWith("保持普通会话", {
+      mode: "off",
+      refs: [],
+    });
   });
 
   it("renders runtime transcript and loads a bounded artifact preview", async () => {

@@ -35,11 +35,28 @@ export function prepareRunSubmission(
     throw new TypeError("request_key 必须与 Idempotency-Key 一致");
   }
 
+  // A prepared submission is a retry-safe value object. Copy every mutable
+  // collection (including nested selection identities) before freezing so
+  // later composer changes cannot alias or silently upgrade this Run request.
+  const inputArtifactIds = [...(request.input_artifact_ids ?? [])];
+  const selectedMemories = (request.selected_memories ?? []).map((memory) => {
+    const identity = {
+      item_id: memory.item_id,
+      version_id: memory.version_id,
+    };
+    Object.freeze(identity);
+    return identity;
+  });
+  Object.freeze(inputArtifactIds);
+  Object.freeze(selectedMemories);
+
   return Object.freeze({
     conversationId,
     idempotencyKey,
     body: Object.freeze({
       ...request,
+      input_artifact_ids: inputArtifactIds,
+      selected_memories: selectedMemories,
       request_key: idempotencyKey,
     }),
   });

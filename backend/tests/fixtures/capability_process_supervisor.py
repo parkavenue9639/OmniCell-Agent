@@ -71,6 +71,7 @@ async def _main() -> None:
         ExploratoryAnalysisRequest(
             dataset=dataset,
             goal="exercise parent hard-loss recovery",
+            acceptance_criterion="other",
         ).model_dump(mode="json"),
         cancellation=token,
     )

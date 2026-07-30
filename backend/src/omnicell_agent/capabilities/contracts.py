@@ -35,6 +35,159 @@ class CapabilityStatus(StrEnum):
     SKIPPED = "skipped"
 
 
+class AtomicOperationDisposition(StrEnum):
+    """What the deterministic recipe actually did to satisfy this request."""
+
+    EXECUTED = "executed"
+    REUSED = "reused"
+
+
+class DatasetScientificState(BaseModel):
+    """Bounded, verified projection of the dataset state seen by one Tool."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    n_obs: int = Field(ge=0)
+    n_vars: int = Field(ge=0)
+    expression_space: Literal[
+        "unknown",
+        "normalized_log1p",
+        "log1p_detected",
+    ]
+    expression_space_basis: Literal[
+        "none",
+        "omnicell_operation",
+        "anndata_log1p_metadata",
+        "bounded_value_detection",
+        "omnicell_lineage_and_matrix",
+        "omnicell_hint_and_matrix",
+        "anndata_metadata_and_matrix",
+    ]
+    has_pca: bool
+    has_neighbors: bool
+    has_leiden: bool
+    cluster_ids: list[
+        Annotated[str, Field(min_length=1, max_length=256)]
+    ] = Field(default_factory=list, max_length=500)
+    quality_control_signature: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    normalization_signature: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    pca_signature: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    clustering_signature: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+
+    @model_validator(mode="after")
+    def _state_is_self_consistent(self) -> "DatasetScientificState":
+        if self.has_leiden != bool(self.cluster_ids):
+            raise ValueError("Leiden 状态与 cluster_ids 不一致")
+        if not self.has_pca and self.pca_signature is not None:
+            raise ValueError("缺少 PCA 时不能声明 pca_signature")
+        if not self.has_leiden and self.clustering_signature is not None:
+            raise ValueError("缺少 Leiden 时不能声明 clustering_signature")
+        return self
+
+
+class MarkerSelectionEvidence(BaseModel):
+    """Hard marker-selection contract verified against the published rows."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    statistical_input: Literal["adata.X"]
+    method: Literal["wilcoxon", "t-test", "logreg"]
+    adjusted_p_value_max: float = Field(gt=0, le=1)
+    min_log2_fold_change: float = Field(ge=0, le=100)
+    top_n_per_cluster: int = Field(ge=1, le=500)
+    all_clusters: list[
+        Annotated[str, Field(min_length=1, max_length=256)]
+    ] = Field(max_length=500)
+    tested_clusters: list[
+        Annotated[str, Field(min_length=1, max_length=256)]
+    ] = Field(max_length=500)
+    reported_clusters: list[
+        Annotated[str, Field(min_length=1, max_length=256)]
+    ] = Field(max_length=500)
+    omitted_clusters: dict[str, Literal["too_few_cells", "no_threshold_hits"]]
+    selected_counts: dict[str, int]
+    marker_count: int = Field(ge=0)
+    thresholds_strict: Literal[True]
+
+    @model_validator(mode="after")
+    def _coverage_is_complete(self) -> "MarkerSelectionEvidence":
+        all_clusters = set(self.all_clusters)
+        tested = set(self.tested_clusters)
+        reported = set(self.reported_clusters)
+        omitted = set(self.omitted_clusters)
+        if len(all_clusters) != len(self.all_clusters):
+            raise ValueError("marker all_clusters 不能重复")
+        if not tested.issubset(all_clusters):
+            raise ValueError("tested_clusters 必须属于 all_clusters")
+        if not reported.issubset(tested):
+            raise ValueError("reported_clusters 必须属于 tested_clusters")
+        if reported & omitted or reported | omitted != all_clusters:
+            raise ValueError("每个 cluster 必须且只能是 reported 或 omitted")
+        if set(self.selected_counts) != reported:
+            raise ValueError("selected_counts 必须精确覆盖 reported_clusters")
+        if any(count <= 0 or count > self.top_n_per_cluster for count in self.selected_counts.values()):
+            raise ValueError("selected_counts 超出 marker 输出契约")
+        if sum(self.selected_counts.values()) != self.marker_count:
+            raise ValueError("marker_count 与 selected_counts 不一致")
+        return self
+
+
+class AtomicScientificEvidence(BaseModel):
+    """Current-invocation scientific facts produced by deterministic checks."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    evidence_level: Literal["validated_observation"] = "validated_observation"
+    operation: str = Field(min_length=1, max_length=128)
+    source_artifact_id: UUID
+    disposition: AtomicOperationDisposition
+    parameters: dict[str, Any]
+    random_seed: int | None = Field(default=None, ge=0)
+    input_state: DatasetScientificState
+    output_state: DatasetScientificState
+    validation_status: Literal["verified"]
+    validation_checks: list[
+        Annotated[str, Field(min_length=1, max_length=128)]
+    ] = Field(min_length=1, max_length=32)
+    marker_selection: MarkerSelectionEvidence | None = None
+
+    @field_validator("parameters")
+    @classmethod
+    def _bounded_parameters(cls, value: dict[str, Any]) -> dict[str, Any]:
+        try:
+            encoded = json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("scientific evidence parameters 必须可 JSON 序列化") from exc
+        if len(encoded) > 16 * 1024:
+            raise ValueError("scientific evidence parameters 超过 16 KiB")
+        return value
+
+    @model_validator(mode="after")
+    def _operation_specific_evidence(self) -> "AtomicScientificEvidence":
+        if (self.operation == "find_marker_genes") != (
+            self.marker_selection is not None
+        ):
+            raise ValueError("marker selection evidence 与 operation 不一致")
+        return self
+
+
 class CapabilitySpec(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -162,6 +315,91 @@ class AnalysisStepSummary(BaseModel):
 class ExploratoryAnalysisRequest(CapabilityRequest):
     dataset: ArtifactRef
     goal: str = Field(min_length=1, max_length=20_000)
+    acceptance_criterion: Literal[
+        "marker_table",
+        "cluster_summary",
+        "dataset_shape",
+        "other",
+    ] = Field(
+        description=(
+            "与当前用户目标对应的 backend 验收器；没有匹配验收器时必须使用 "
+            "other，结果只能形成局部事实，不能自动宣称整体科学目标完成。"
+        )
+    )
+
+
+class ExploratoryArtifactEvidence(BaseModel):
+    """Backend-verified facts for one exploratory output artifact."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    artifact_id: UUID
+    kind: str = Field(min_length=1, max_length=128)
+    verification_level: Literal[
+        "scientific",
+        "structural",
+        "unverified",
+    ]
+    checks: list[
+        Annotated[str, Field(min_length=1, max_length=128)]
+    ] = Field(default_factory=list, max_length=16)
+    facts: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("facts")
+    @classmethod
+    def _bounded_facts(cls, value: dict[str, Any]) -> dict[str, Any]:
+        encoded = json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        if len(encoded) > 16 * 1024:
+            raise ValueError("exploratory artifact facts 超过 16 KiB")
+        return value
+
+
+class ExploratoryResultManifest(BaseModel):
+    """Result inventory independently derived by the backend."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    acceptance_criterion: Literal[
+        "marker_table",
+        "cluster_summary",
+        "dataset_shape",
+        "other",
+    ]
+    acceptance_checks: list[
+        Annotated[str, Field(min_length=1, max_length=128)]
+    ] = Field(default_factory=list, max_length=16)
+    scientific_goal_status: Literal[
+        "validated",
+        "partial",
+        "unverified",
+    ]
+    items: list[ExploratoryArtifactEvidence] = Field(max_length=500)
+    authoritative_fact_count: int = Field(ge=0)
+    limitations: list[
+        Annotated[str, Field(min_length=1, max_length=500)]
+    ] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _manifest_is_consistent(self) -> "ExploratoryResultManifest":
+        scientific_facts = sum(
+            len(item.facts)
+            for item in self.items
+            if item.verification_level == "scientific"
+        )
+        if scientific_facts != self.authoritative_fact_count:
+            raise ValueError("authoritative_fact_count 与科学级 artifact facts 不一致")
+        if self.scientific_goal_status == "validated" and (
+            not scientific_facts
+            or self.acceptance_criterion == "other"
+            or "goal_acceptance_verified" not in self.acceptance_checks
+        ):
+            raise ValueError("validated exploratory result 必须通过目标验收")
+        return self
 
 
 class ExploratoryAnalysisResult(BaseModel):
@@ -172,6 +410,7 @@ class ExploratoryAnalysisResult(BaseModel):
     steps: list[AnalysisStepSummary] = Field(max_length=500)
     artifacts: list[ArtifactRef] = Field(default_factory=list, max_length=500)
     marker_table: ArtifactRef | None = None
+    result_manifest: ExploratoryResultManifest
     diagnostic_summary: str | None = Field(default=None, max_length=2_000)
 
 
@@ -229,6 +468,7 @@ class AtomicAnalysisResult(BaseModel):
     output_dataset: ArtifactRef | None = None
     artifacts: list[ArtifactRef] = Field(default_factory=list, max_length=32)
     marker_table: ArtifactRef | None = None
+    scientific_evidence: AtomicScientificEvidence
     metrics: dict[str, Any] = Field(default_factory=dict)
     diagnostic_summary: str | None = Field(default=None, max_length=2_000)
 
@@ -273,6 +513,12 @@ class CellAnnotationClusterSummary(BaseModel):
         default_factory=list,
         max_length=20,
     )
+    validator_status: Literal[
+        "supported",
+        "unsupported",
+        "failed",
+        "not_run",
+    ]
     requires_manual_review: bool
 
 
@@ -285,6 +531,8 @@ class CellAnnotationResult(BaseModel):
     report: ArtifactRef
     cluster_count: int = Field(ge=0)
     manual_review_count: int = Field(ge=0)
+    marker_coverage_complete: bool
+    omitted_marker_cluster_count: int = Field(ge=0)
     cluster_summaries: list[CellAnnotationClusterSummary] = Field(
         max_length=500,
     )
@@ -324,6 +572,8 @@ __all__ = [
     "AnalysisStepSummary",
     "ArtifactRef",
     "AtomicAnalysisResult",
+    "AtomicOperationDisposition",
+    "AtomicScientificEvidence",
     "CapabilityEffect",
     "CapabilityMode",
     "CapabilityRequest",
@@ -335,14 +585,18 @@ __all__ = [
     "ClusterCellsRequest",
     "DatasetContext",
     "DatasetCapabilityRequest",
+    "DatasetScientificState",
     "ExploratoryAnalysisRequest",
     "ExploratoryAnalysisResult",
+    "ExploratoryArtifactEvidence",
+    "ExploratoryResultManifest",
     "FindMarkerGenesRequest",
     "InspectDatasetContextRequest",
     "InspectDatasetContextResult",
     "InspectMarkerTableRequest",
     "InspectMarkerTableResult",
     "MarkerClusterSummary",
+    "MarkerSelectionEvidence",
     "NormalizeExpressionRequest",
     "PlotPcaClustersRequest",
     "QualityControlRequest",

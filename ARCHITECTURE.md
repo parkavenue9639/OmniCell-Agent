@@ -5,9 +5,9 @@
 | 字段 | 内容 |
 | --- | --- |
 | 文档状态 | 生效中的架构基线 |
-| 所在分支 | `codex/agent-loop-frontend-redesign` |
-| 当前阶段 | Phase 18：Tool、Skill 与提示词专业化/泛化调优，已完成 |
-| 最近更新 | 2026-07-25 |
+| 所在分支 | `codex/cross-session-memory` |
+| 当前阶段 | Phase 23：科研证据闭环与结果一致性，已完成 |
+| 最近更新 | 2026-07-30 |
 | 适用范围 | 单机科研原型架构重构 |
 
 本文档是 OmniCell-Agent 本轮重构的唯一架构设计基线，用于约束系统边界、职责划分、实施顺序与完成标准。本文档有意避免类、函数、接口地址等代码级设计，使具体实现可以在不偏离系统架构的前提下演进。
@@ -296,6 +296,34 @@ PostgreSQL 是元数据与控制状态的持久化系统；filesystem 或对象�
 Conversation 标题属于 backend 权威资源 metadata。空 conversation 可以由 frontend 显示临时占位；首条有效用户目标触发一次简洁标题总结，并在 Run 创建响应返回前持久化。生产组合根通过 `summary` LLM 角色生成标题，provider 超时、失败或返回非法内容时使用有界的确定性标题兜底；标题生成失败不得阻止 Run 创建或改变 Run 终态。自动标题只允许替换空值或项目保留的初始占位，不得覆盖已经明确设置的标题，也不应在后续多轮中无故抖动。
 
 应用表由项目 migration 唯一管理；LangGraph checkpoint 表由 saver 自身的 migration 唯一管理。两者可以部署在同一 PostgreSQL 实例，但必须使用不同 schema，保持逻辑隔离、独立连接池和清晰的 schema ownership，任何一侧都不得重复管理另一侧的表。
+
+### 跨会话记忆
+
+跨会话记忆是独立的应用资源，不是 LangGraph checkpoint、conversation history、artifact、Skill 方法知识或当前 Run evidence 的别名。当前项目没有 user/principal 模型，因此本阶段只建设 loopback 本地安装级的 `local-default` memory scope，不将其表述为多用户全局能力，也不引入账号、云同步或独立 memory service。
+
+记忆按语义区分响应偏好、显式用户事实和有时效的项目上下文。历史科学观测必须带来源并保持 dataset scope，默认不自动进入新 Run；即使被用户显式选中，也只能作为“历史上曾观察到”的建议性背景，不能证明当前数据状态、满足科学前置条件、完成计划、解锁 Skill、授权 Tool 或扩大 artifact ownership。
+
+记忆正文由版本化、可纠正、可撤销的应用记录持有。Correction 追加不可变版本；forget/revoke 立即停止后续授权与未来检索；purge 清除记忆正文及索引、候选和近期摘要等派生明文，同时保留不含正文的内容指纹与来源 message identity 域分离摘要 suppression/tombstone。自动 proposal/candidate 必须在读取旧消息正文前拒绝任何被抑制来源，并与 purge 通过同一 `memory_settings` 行锁线性化、持锁到新版本提交；因此新提议要么完整提交在 purge 之前，要么在 purge 之后看到 tombstone 并拒绝，不能先查空再等待 purge、随后通过拼接改变整体正文指纹后重新学习。删除记忆不等于删除原 conversation、event、checkpoint，也不能召回 provider 已接收或已获授权、正在发送的请求，产品界面必须明确这一边界。
+
+每个 Run 在首次模型调用前只检索一次，并由当前 attempt owner 在复验 lease fence 后，将 snapshot、精确 memory version inputs 与 `memory.context_loaded` 事件在同一应用事务提交。默认检索即使为空或降级也形成唯一 snapshot；显式选择的记忆失效时必须结构化拒绝，不能静默替换。普通 correction 不改变已冻结 Run 的版本；revoke/purge 属于隐私优先的安全覆盖，后续 turn 不再重建正文。
+
+记忆正文不得作为 Memory 资源进入 checkpoint、Run 请求、公共事件、诊断日志或 frontend 持久化存储。Checkpoint 和 Agent ToolMessage 只保存稳定 item/version/hash identity；模型调用前由逐 turn resolver 在短事务内按精确版本瞬态重建，并把正文作为低优先级、不可信的数据消息放在真实 conversation turn 之前，不能与约束策略共同伪装成高优先级指令。用户可见回复可以应用必要的原子事实，但禁止把整段历史正文复制到 Tool 参数、metadata 或控制状态。
+
+每次 Agent-level provider attempt 都必须在实际调用前执行独立的短事务 pre-dispatch 校验，复验当前 consent、使用开关、精确 identity、撤销/清除/suppression 状态及单调 `disclosure_epoch`。成功校验是该 attempt “已经授权、进入发送窗口”的线性化点；随后提交的 revoke/purge 无法召回已经接收或已获授权、正在发送的请求，但必须原子推进 epoch，使尚未授权的 attempt 以及 Agent 自己的后续 retry fail-closed。不得以覆盖整个 provider 调用的数据库事务或连接实现该门禁，避免阻塞隐私命令、heartbeat 和控制面。
+
+该 resolver 与通用 pre-dispatch seam 通过组合协议注入 Loop；Loop 只识别通用授权失效，不直接依赖 PostgreSQL 或 Memory 语义。构造期静态 context 仍可承载当前 Run 的权威 artifact 描述，但不得承载需要响应 revoke/purge 的 memory 正文。
+
+基础连续性检索由 backend 在 Run 上下文准备阶段完成，不要求 Agent 为每个普通问答调用 Tool。按需历史深查、记忆提议和忘记属于通用 control Tool，不属于领域 Skill；其调用与返回只携带 identity，正文由瞬态 resolver 提供，并且成功结果不得进入领域 `tool_evidence`、自动完成计划步骤或满足 `finish_task`。每个 control Tool call 以 run、attempt、canonical `tool_call_id` 和请求摘要形成可重放的 identity-only 事实，事件在 checkpoint 前提交后仍能严格重放原结果；任何调用在执行或重放前发现 attempt/lease fence 已丢失，都必须作为控制面 fatal error 终止旧 owner 的当前 Agent 执行，不能生成可重试 ToolMessage 后继续下一轮。Agent 自主搜索只覆盖响应偏好、用户事实和项目上下文；历史科学观测只能由用户按精确版本显式选择。
+
+记忆读取、自动候选生成和 Agent-visible memory Tool 在 backend 继续保留独立门禁，以便失败时精确拒绝并维持既有安全边界；它们不再作为科研原型的三个日常产品开关。Frontend 只呈现一个“跨会话记忆”总开关：首次开启用一次简短确认说明记忆正文会发送给当前 LLM provider，确认后统一开启读取、候选和 Tool；关闭时统一关闭三者，撤回授权仍作为管理区的低频操作保留。所有显式 create/propose/approve/correct 与后续自动候选共用服务端类型、大小和敏感内容门禁，禁止凭据、宿主绝对路径、患者身份信息、原始科学矩阵和未脱敏执行输出进入记忆。
+
+日常 Run 不要求用户理解或逐次选择 `off/default/selected`：总开关可用时 frontend 自动提交 `default`，不可用或关闭时自动提交 `off`。`selected` 及精确版本引用继续作为 backend 高级契约和确定性验证面保留，但不进入普通消息输入区。用户通过“记住……”和“忘记……”等自然语言触发 Agent control Tool；待确认提议和遗忘请求应直接出现在当前会话时间线并提供最短确认路径，纠正、永久清除和技术身份等低频操作留在记忆管理区。Frontend 可以隐藏 provider 版本、hash、稳定键与三门禁状态等内部细节，但不得删除来源、状态、纠正、遗忘和清除能力。
+
+“记住”和“忘记”是示例语义，不是关键词口令。记忆总开关开启时，Agent 可以从当前用户明确表达中主动识别跨 conversation 仍可能稳定复用的回复偏好、用户事实和项目背景，并调用 `propose_memory` 创建候选；候选必须继续等待用户确认，不能因模型判断直接生效。Agent 提议在模型 schema 与服务端都只能引用当前 Run 的一条用户消息，并完整保存该消息而不是自由改写、抽取或拼接，因此只有整条消息主要表达一项单一、可独立复用的长期信息时才能主动提议；长期信息与当前任务、临时条件或科学内容混合时应跳过提议。主动提议不得打断当前目标、创建计划或替代正常回复，单个 Run 最多发起一个候选；达到上限属于不可重试的确定性结果，Agent 应继续或结束当前任务，不得按版本冲突机械重试。一次性措辞、仅限当前 Run 的要求、寒暄、模型推断出的敏感属性、凭据、患者信息、执行输出和当前数据集科学结论不得主动提议。Agent 可以从“以后不要……”“不再使用……”等明确撤销或纠正语义发起 forget 请求，不依赖“忘记”字样，但不得根据沉默、低相关性或自身判断主动撤销、清除记忆。永久清除始终只属于用户管理操作。
+
+记忆提示策略按组合能力装配：没有 Memory resolver、上下文或 control Tool 时，通用 Agent Loop 不携带整段记忆规则；存在相关能力时，逐 turn Hook 只声明不可信历史数据与证据隔离，Tool description 只声明真实动作和类型化输入输出，Tool 行为提示负责调用与禁用条件。三者由同一策略模块渲染，不能在静态 system prompt、Tool inventory 和 Hook 中维护互相独立的事实版本。
+
+Frontend 对待确认候选必须展示来自服务端的完整正文，截断预览只能作为首屏摘要并提供查看全文；界面应明确正文已按整条来源消息保存、确认后才会用于未来对话，并同时提供接受与拒绝路径。拒绝候选应清除候选正文并保留 suppression，避免旧来源再次生成。自动 snapshot 属于 Backend 上下文准备，`search_memory`、`propose_memory` 与 `forget_memory` 属于 Agent Tool；时间线必须按这一区分渲染，并在原操作位置展示失败和处理中状态。
 
 ### LangGraph Checkpointer
 
@@ -650,6 +678,144 @@ Frontend 使用最近已应用的 sequence 发起重连。Backend 先重放已�
 
 完成门槛：五个 Skill、九个领域 Tool 与全部模型可见提示词均有唯一且一致的职责归属；顶层提示词不重复领域知识；专业方法选择和证据限制由匹配 Skill 或内部能力提示词提供；任何领域 Tool 均不因缺失前置条件而隐式扩张用户目标；注释和视觉评估明确其证据与不确定性边界；六类路由均有确定性证据，代表性真实模型运行不出现错误数据访问、错误能力选择或明显科学越界；完整 backend 回归、内容快照和独立审查通过。
 
+### Phase 19：跨会话记忆
+
+本阶段在不改变通用 Agent Loop 路由语义的前提下，为本地单用户科研原型增加可控、可追溯、可纠正和可遗忘的跨 conversation 上下文：
+
+1. 冻结 memory taxonomy、`local-default` scope、provider consent、科学证据、snapshot/recovery、identity-only Tool 和真正遗忘边界；
+2. 在应用 schema 中建设版本化 Memory Plane、显式 CRUD、管理界面和默认关闭设置，不复用 checkpoint 或 artifact ownership；
+3. 在首次模型调用前以 attempt fence 原子冻结 Run snapshot，并通过逐 turn resolver 瞬态重建正文，确保 resume 使用精确版本且 revoke/purge 能安全覆盖；
+4. 建设按需 `search_memory`、`propose_memory` 与确认式 forget control Tool，其 checkpoint 协议只保留 identity，不能生成领域 evidence 或计划完成事实；
+5. 用确定性跨会话用例验证普通问答仍直接完成、当前要求覆盖旧偏好、科学结论不跨数据集洗白、关闭/纠正/忘记/恶意注入/selected 失败与刷新恢复；
+6. 只有显式能力稳定后才评估 completed-run 候选与固定窗口近期摘要；自动候选不属于本阶段完成的前置条件，默认保持关闭；PostgreSQL lexical retrieval 有可复现召回缺口前不引入 vector store。
+
+当前进度：
+
+- [x] 完成 OmniCell、Codex 与 Agnes Core 源码对照，冻结读取/写入分离、渐进披露、固定窗口摘要和不宜照搬的边界；
+- [x] 完成 T3 Goal Preview 与架构独立审查，关闭 checkpoint 正文、attempt fence、重新学习、敏感写入和在途 purge 等 P1；
+- [x] 完成应用 schema、repository、显式 API、默认关闭设置与 frontend 管理面；
+- [x] 完成 Run snapshot、逐 turn resolver、公共事件与 frontend 透明展示；
+- [x] 完成 identity-only memory control Tool 与完成证据隔离；
+- [x] 完成 backend、PostgreSQL、跨端契约、frontend 与真实产品闭环验证；
+- [x] 完成 `AGENTS.md` 自闭环评估并沉淀 Memory 长期不变量；
+- [x] 冻结最终内容 manifest 并通过 fresh-context I1 Checker。
+
+完成门槛：记忆具有稳定 scope、不可变版本、来源、纠正、撤销、清除和 suppression 语义；默认关闭且 provider consent 可验证；每个启用记忆的 Run 在当前 attempt fence 下原子绑定精确版本，正文只在逐 turn model view 瞬态出现；memory Tool 的 call/result 不持久化正文、不完成计划；普通问答不因记忆创建 Task 或 Tool；当前用户要求始终覆盖历史表达偏好；历史科学观测不成为当前数据证据或 artifact 权限；forget/purge 后未来 Run 不命中且旧来源不能重新生成；刷新可恢复使用来源与结果；最终快照通过确定性、真实产品闭环和独立只读评审。
+
+### Phase 20：跨会话记忆交互收敛
+
+本阶段只收敛科研原型中的使用复杂度，不重写 Phase 19 已验证的 Memory Plane、版本、来源、snapshot、resolver、Tool identity、科学证据和遗忘边界：
+
+1. 将三个内部开关合并为 frontend 单一总开关，并把 provider 授权收敛为首次开启时的一次简短确认；
+2. 消息输入区不再暴露逐 Run 模式和精确版本选择，启用时自动使用相关记忆，关闭或不可用时自动按普通会话执行；
+3. 把“记住”和“忘记”作为自然语言主入口，并在当前时间线提供提议或遗忘请求的直接确认；
+4. 将稳定键、hash、provider 版本和内部门禁等技术信息折叠为管理区的按需详情，保留纠正、遗忘、永久清除与来源查看；
+5. 修复记忆事件到管理列表的实时同步，并验证开启、自动召回、提议确认、关闭降级和刷新恢复。
+
+当前进度：
+
+- [x] 完成现有交互、内部契约和 Phase 19 安全边界盘点；
+- [x] 完成单一总开关与自动 Run 模式；
+- [x] 完成时间线直接确认与管理面信息降噪；
+- [x] 完成实时同步修复、定向回归和浏览器端到端验证；
+- [x] 完成 `AGENTS.md` 自闭环评估与阶段证据记录。
+
+完成门槛：普通用户只需一次开启，此后通过自然语言即可记住、召回和请求忘记，不需要理解三门禁、provider 版本或逐 Run 模式；Memory API 不可用或总开关关闭时普通会话仍 fail-closed 执行；候选仍需明确确认，永久清除仍需二次确认；Phase 19 的正文、科学证据、snapshot、fence、suppression 与删除边界不被削弱；定向测试和真实浏览器流程通过。
+
+### Phase 21：主动记忆提议与语义遗忘
+
+本阶段让记忆能力从固定示例句式收敛为通用语义判断，同时保持所有写入与删除边界：
+
+1. 顶层 Agent 明确区分自动召回、主动候选和用户授权的遗忘请求，不把记忆管理变成每轮必经流程；
+2. 对用户明确表达且跨 conversation 可能稳定复用的信息，允许 Agent 在不要求“请记住”关键词的情况下主动提议；
+3. 对明确的撤销、否定或替换意图，允许 Agent 在不要求“忘记”关键词的情况下发起确认式 forget；
+4. 一次性要求、当前任务内容、推断出的敏感事实和科学数据结论保持 fail-closed，单个 Run 最多主动提议一条；
+5. 用确定性正反例与真实端到端观察验证主动性、克制性、主任务完成和确认边界。
+
+当前进度：
+
+- [x] 完成现有 Tool、门禁、source identity 与测试覆盖盘点；
+- [x] 完成主动提议和语义遗忘提示词契约；
+- [x] 完成无关键词正例、一次性、混合任务、科学结论与普通闲聊负例验证；
+- [x] 完成真实端到端观察与独立复审；
+- [x] 完成 `AGENTS.md` 自闭环评估与阶段证据记录。
+
+阶段证据：
+
+- Backend 以 user-only message identity 和 Run 行锁保证模型不能把自身推断写成候选、同一 Run 最多一条候选，同时保留同调用幂等重放与 purge suppression 顺序；默认回归 520 passed/52 skipped，真实 PostgreSQL 3 passed，compileall 与 diff check 通过；
+- Frontend Vitest 13 files/73 tests、契约漂移检查、typecheck、production build 与隔离 Chromium mock 7 tests 通过；真实 React→FastAPI→PostgreSQL/checkpointer→SSE 4 tests 通过并覆盖无固定口令主动提议、一次性要求、混合长期信息与当前任务、当前科学结论、普通闲聊、刷新确认、跨会话召回及语义撤销，临时 schema 已清理；
+- 真实模型在 conversation `cdb6f630` 的 Run `8d8ce693` 对无“请记住”表达主动创建待确认候选，在 Run `335202b7` 对无“忘记”字样的撤销语义发起确认式 forget；conversation `2038bd5c` 的 Run `db7603b0` 对一次性两句话要求直接回答且不提议。首个混合消息 Run `8f5b3c7a` 暴露模型仍会误提议，测试候选已彻底清除；前置完整消息原子性门禁后，换用不同表达的 Run `c75acf98` 完成当前比较任务且保持 0 Task/0 Tool/0 candidate；
+- 独立 Checker 首轮发现“完整原文候选可能夹带当前任务”P2；修复后两轮只读复核均 PASS，原 P2 CLOSED，最终 P0-P3 为 0。`AGENTS.md` 已沉淀语义触发、user-only 完整原文、原子性门禁、单候选与确认边界。
+
+完成门槛：用户无需使用固定口令即可触发合理候选或遗忘请求；候选不自动生效，forget 不自动撤销或清除；Agent 不会把一次性约束、敏感推断、当前数据结果或普通闲聊滥记；普通任务仍按最小充分路径完成且不为记忆创建计划；确定性回归、真实产品闭环和独立复审通过。
+
+### Phase 22：记忆质量、交互与验证闭环
+
+本阶段不扩展 Memory taxonomy、召回算法或自动写入权限，而是关闭 Phase 21 后暴露的契约漂移、确认体验和验证可信性缺口：
+
+1. 将主动候选收敛为“单条当前用户消息、完整原文、单一长期信息”的端到端硬契约，并为候选上限提供不可重试且恢复动作真实的结构化错误；
+2. 将 Memory 提示策略按 Hook 数据边界、Tool 动作契约和 Tool 路由条件拆责，由单一模块渲染，并只在当前 Agent 组合实际具备 Memory 能力时装配；
+3. 用表驱动场景矩阵维护稳定偏好、用户事实、项目背景、一次性要求、混合任务、科学结论、闲聊和语义撤销等正反例；受控模型只承担确定性链路门槛，真实模型只作为可选行为观察，不把中文关键词分支伪装成提示词质量证据；
+4. 增加真实 PostgreSQL 的并发单候选验证，证明不同 Tool call 竞争时恰有一个候选成功，另一个得到稳定不可重试结果；
+5. 让 frontend 候选确认展示完整原文和明确的接受/拒绝路径，主时间线就近显示命令失败与处理中状态，并区分 Backend snapshot 与 Agent memory Tool。
+
+当前进度：
+
+- [x] 完成前端、后端工程、harness 与提示词四条证据化审计；
+- [x] 冻结单消息契约、提示策略职责、错误恢复、确认交互和分层证据方向；
+- [x] 完成 backend 与提示词实现；
+- [x] 完成 frontend 交互实现；
+- [x] 完成确定性、PostgreSQL、frontend 与真实产品闭环验证；
+- [x] 完成 `AGENTS.md` 自闭环评估并沉淀知情确认规则；
+- [x] 完成最终固定快照的独立 Checker。
+
+当前证据：
+
+- Agent-visible `propose_memory` 与服务端均只接受单个 `source_message_id`，候选正文及其 hash 严格基于该条当前 Run 的 user message 原文，Unicode 与首尾空白不会被存储层改写，规范化值只参与 fingerprint 去重与抑制；多消息输入被结构化拒绝，第二候选返回不可重试的 `memory_proposal_limit_reached`，敏感正文拒绝也不会诱导 Agent 改写来源后重试；
+- Memory 策略收敛至单一模块：Hook 只处理瞬态不可信正文和科学证据隔离，Tool description 只声明动作契约，Tool hint 只声明语义调用条件；未组合 Memory Tool 和正文的普通 Loop 不再携带 Memory 策略；
+- 表驱动 harness 覆盖三类正例、七类负例、语义撤销和跨会话召回，并验证同一 conversation 的后续 Run 不复用历史 `tool_call_id`；真实 PostgreSQL 并发测试证明两个不同调用竞争时只有一个候选成功；
+- Frontend 候选卡片保留换行并提供 280 字预览、总字数和完整原文展开，支持两步“拒绝并清除”；purge 后正文从当前卡片消失，刷新后按已拒绝恢复。自动 snapshot 显示为 Backend，Agent search/propose/forget 显示为真实 Tool；命令 identity、处理中状态和错误按精确 memory item 绑定到对应卡片，多卡片不会串状态；
+- Backend 在真实 PostgreSQL 下完整回归为 579 passed、13 skipped；Frontend Vitest 为 13 files/77 tests，契约漂移检查、TypeScript 与 production build 通过，隔离 Chromium mock 7 tests 和真实 React→FastAPI→PostgreSQL/checkpointer→SSE 4 tests 通过；真实闭环覆盖候选采用、拒绝清除、刷新恢复、跨会话召回和语义遗忘。`compileall` 与 `git diff --check` 通过；
+- 独立 Checker 首轮发现“Unicode NFC 改写来源正文”和“命令状态未绑定具体卡片”两个 P2；修复后对固定实现快照复审 PASS，两个 finding 均 CLOSED，最终 P0-P3 与阻断性 UNKNOWN 均为 0。
+
+完成门槛：Agent-visible schema 与服务端都拒绝多消息候选；无 Memory 能力的 Loop 不携带 Memory 策略，启用时 Hook、Tool description 与 Tool hint 无职责冲突；候选上限返回 `retryable=false` 和真实恢复建议；前端确认前可以查看完整原文并可就地拒绝，错误与忙碌状态在操作位置可见，Memory 活动分类符合 Tool/Backend 语义；表驱动受控场景、真实 PostgreSQL 并发、frontend 回归与真实全栈用例通过；最终固定快照通过独立只读 Checker。
+
+### Phase 23：科研证据闭环与结果一致性
+
+本阶段修复“执行成功、产物存在或模型看过结果”被错误升级为“科研结论可信”的问题，不扩展新的领域分析范围，也不建设通用规则平台。目标是在领域执行、Artifact、Agent 证据和最终回复之间形成一条轻量、确定性、可复查的科学证据链：
+
+1. 将能力运行完成、科学目标完成和科学事实通过验证分开表达；只有通过对应领域后置校验的事实才能成为当前 Run 的权威科学证据；
+2. Dataset 的表达空间、操作状态、参数、随机性和上游来源必须由实际输出及后置校验生成，不得根据 Tool 名称或计划意图无条件写入；执行、复用、跳过和拒绝必须保持可区分；
+3. 原子 Tool 按科学目标验证输入状态、实际操作、输出状态和关键不变量；探索性分析除运行与文件安全外，还必须提供可验证的结果清单，并由 backend 独立复核关键统计与跨产物一致性；
+4. Marker 选择条件属于输出契约，不得静默降级；统计输入空间、参与和遗漏的 cluster、阈值命中情况必须明确。细胞类型注释中的模型验证失败、证据不支持或输入覆盖不完整必须进入人工复核，启发式证据分数不得表述为校准概率；
+5. 每次领域 Tool 调用形成有界、类型化、只属于当前 Run 的科学证据集合；历史消息、Memory、stdout、未选择 Artifact 和未验证文件不能自动升级为当前数据的直接观测；
+6. 自然完成与结构化完成必须经过同一最终回复证据门禁。执行状态、数字、Artifact 引用和证据等级与当前 Run 的权威事实冲突时，候选回复不得先发布；有界修正仍失败时输出保守的确定性结果；
+7. 验证以小型真实科学 fixture、受控模型反例和至少一条真实产品闭环为门槛。真实 LLM 继续只承担分布观察，不能替代确定性科学不变量。
+
+当前进度：
+
+- [x] 完成当前领域 Tool、探索引擎、注释引擎、Agent 完成门禁和现有测试的证据化审查；
+- [x] 冻结科学证据分层、dataset 状态、探索结果验证和最终回复对账方向；
+- [x] 完成原子 Tool 的实际操作状态、科学后置校验与 provenance 收敛；
+- [x] 完成 marker 严格阈值、聚类复用签名与注释失败关闭；
+- [x] 完成当前 Run 科学证据集合及统一最终回复门禁；
+- [x] 完成探索性结果清单、独立校验和失败尝试隔离；
+- [x] 完成确定性、真实 Docker、Agent 跨层与真实产品闭环验证；
+- [x] 完成 `AGENTS.md` 自闭环评估和最终独立只读复审。
+
+当前证据：
+
+- 五个原子 Tool 现在从实际输入与输出生成 `AtomicScientificEvidence`，明确 `executed/reused`、表达空间、参数、随机种子、聚类签名和后置检查；归一化只在实际满足时写入状态，聚类只有完整状态及精确参数签名一致时才复用。Marker 统计固定使用 `adata.X`，每行必须满足请求阈值，未命中与样本不足的 cluster 进入类型化遗漏清单，不再生成降级行；
+- 注释结果记录每个 cluster 的 validator 状态，验证失败、证据不支持和 marker 覆盖缺口均强制进入人工复核；顶层只把启发式结果作为方法约束下的推断，不能升级为已验证身份；
+- 领域 Tool 的有界科学事实进入当前 Run `tool_evidence`，通过瞬态 Hook 与历史消息、Memory 和 stdout 分离。自然回复与 `finish_task` 共用执行状态、数量、Artifact 和证据等级对账；冲突候选不会发出 `message.completed`，有界修正耗尽后只发布 backend 根据已验证事实生成的保守结果；
+- 探索性分析的每次执行或修复使用独立 attempt 目录，最终 Artifact 集合只允许成功目录。Backend 为 marker、H5AD、图像、JSON、表格、文本和未知文件生成分级结果清单；只有 marker 契约和 H5AD 形状等独立复核事实属于科学级，结构可读的通用产物保持为结构证据，未知文件保持非权威草稿。未完全验证的探索结果不能自动对账显式计划步骤；
+- 确定性 Agent、Capability、核心行为和科学反例定向回归为 208 passed、2 skipped；当前完整 backend 为 569 passed、53 skipped；真实 PostgreSQL/OrbStack 非真实 LLM 选择集为 50 passed、1 skipped，真实 normalize→cluster→marker Docker 链为 1 passed。Frontend Vitest 为 13 files/77 tests，契约漂移检查、TypeScript 与 production build通过，隔离 Chromium mock 为 7 passed；
+- 真实 React→FastAPI→PostgreSQL/checkpointer→SSE→OrbStack Docker 产品闭环为 5 passed。科研用例上传真实 H5AD 后执行归一化，受控模型故意把 `executed` 错报为 `reused`；错误候选未进入前端，修正事实在刷新后恢复，临时数据库 schema 已清理。`compileall` 与 `git diff --check` 通过；
+- 首轮独立只读复审发现探索目标未绑定验收器及逐簇映射未完整对账、陈旧 AnnData metadata 可误解锁复用、annotation 缺失 selection 时错误宣称覆盖完整、自然语言窄正则漏过常见数量改写，以及 marker 非有限值逃逸，共 P1×4、P2×1。当前实现已增加类型化探索验收目标、完整 count/proportion 映射对账、metadata 与矩阵/lineage 联合判定、annotation selection 强制门禁、backend 权威科学终答渲染及 marker 有限性和范围约束；修复复审进一步发现 `finish_task.final_response` 虽未公开但仍先进入 checkpoint 的 P1，当前 reasoning 节点已在持久化前同时清除伴随文本并把该参数替换为固定 backend 占位，Tool 只消费 evidence identity 与 limitations；对应 checkpoint 反例已通过，等待最终复审；
+- `AGENTS.md` 自闭环已沉淀科学完成分层、backend 权威终答、探索类型化验收与完整投影对账规则。最终实现候选以 baseline `9a1c9bf2a13a6c4293a1f3a00aee8cd61f8045bb` 与 tracked binary diff `897c18da87a0d7ca41f87d8544b6a61d3b07a07bb8b518548f2e609bbb560179` 冻结；独立 Checker 复跑真实 reasoning→`finish_task` checkpoint 链后 PASS，首轮 P1×4/P2×1 和修复复审 P1 全部 CLOSED，最终 P0-P3 均为 0。
+
+完成门槛：任何未验证、相互矛盾或来源不明的科学结果均不能成为 completed evidence；归一化、聚类和 marker 的实际输入空间、执行状态、参数及输出状态可复查且相互一致；探索产物的关键数量、比例、cluster 集合和跨文件投影通过独立校验；注释验证异常和证据不支持始终进入人工复核；模型故意错报执行状态、数量、Artifact 或证据等级时，错误候选不会产生公共完成消息；小型真实数据、受控模型、当前完整 backend 回归和至少一条真实 React→FastAPI→PostgreSQL/checkpointer→SSE→Docker 科研链路通过。
+
 ## 13. 进度台账
 
 状态值统一使用：`未开始`、`进行中`、`已完成`、`阻塞`。
@@ -675,6 +841,11 @@ Frontend 使用最近已应用的 sequence 发起重连。Backend 先重放已�
 | 16：Conversation 动态标题与新会话 E2E | 已完成 | 首条有效用户目标会通过 `summary` alias 生成并持久化有界标题，provider 异常、超时和非法结果回落到确定性标题；仅空值或保留占位可被覆盖，明确标题保持不变，frontend 在 Run 提交与启动时刷新列表和详情。Backend 标题、真实 PostgreSQL 与 API/LLM 定向测试 25 passed，frontend Vitest 12 files/52 tests、契约漂移检查与 production build通过，隔离 Chromium Playwright 7 passed。真实新 conversation `4c039ee5` 以普通问答完成 Run `efbeec24`，生成标题“聚类后marker gene：鉴定细胞类型”，0 Task/0 Tool、终态 `completed`、sequence 6；浏览器强制刷新后标题、消息与终态从 PostgreSQL 历史完整恢复。`AGENTS.md` 已沉淀标题权威性、条件覆盖与失败兜底规则 | 2026-07-25 |
 | 17：Agent 响应契约与提示词泛化 | 已完成 | 顶层响应契约已模块化并置于 Tool inventory 后，统一约束当前用户显式要求优先、默认最小充分表达、科学证据分层、按需结构与类比，以及不做机械截断；动态路由进一步以“领域方法风险而非答复长短”判断 Skill 加载，`cluster-and-marker-analysis@1.1` 补齐计算表示、相关/因果、marker/稳健性与证据组合边界。确定性定向回归 99 passed，backend 非外部依赖套件 451 passed/49 deselected，`git diff --check` 通过。真实 React→FastAPI→PostgreSQL/checkpointer→SSE 观察中，conversation `c977ff3b` 的详细方法问题由 Run `ba3a26ec` 自主加载 Skill 后直接完成，conversation `62b47a30` 的简短领域术语问题由 Run `d48a4f0e` 加载同一 Skill 后以短答完成，两者均为 0 Task/0 领域 Tool；conversation `4d62aa1f` 的稳定通用知识问题由 Run `b77d0c3a` 不加载 Skill、0 Task/0 Tool 直接用两句话完成。`AGENTS.md` 已沉淀统一响应契约与方法上下文路由规则 | 2026-07-25 |
 | 18：Tool、Skill 与提示词专业化/泛化调优 | 已完成 | 已完成五个 Skill、九个领域 Tool、顶层响应契约、Conversation title summary 与全部内部模型提示面的唯一职责校准；删除三份未引用且会诱导隐式预处理的旧提示资产，探索 Planner/Programmer 改为 fail-closed，未知物种不再默认 Human，非 marker 探索目标不再强制 marker 导出，注释输出明确为暂定标签与启发式证据评分。首轮 fresh I1 Checker 发现 P1×3、P2×1：注释高分主路径未贯通定量 marker 证据、探索恢复态存在默认数据路径、未知目标被默认为注释、内容清单漏绑实际语义入口；Maker 已完成唯一一轮修复，当前初始注释和复核均接收显著性、效应量及簇内外表达比例，定量证据缺失时评分闭合为 0，所有探索 Recipe 和执行节点均取消默认数据路径，未知目标保持 `unknown`。所有权、科学边界、六类路由及修复定向回归 182 passed，完整非外部依赖 backend 467 passed/49 deselected，compileall 与 diff check 通过。真实 React→FastAPI→PostgreSQL/checkpointer→Agent Loop 中，Run `9affc3e8-d5db-4ca9-9257-708d2d32c199` 只加载 `cluster-and-marker-analysis@1.2` 后回答方法问题，0 Task、0 领域 Tool、sequence 11；Run `06f3e54f-9253-4266-a2e9-3af643503c85` 以两句话直接回答通用问题，0 Task、0 Tool、sequence 6，刷新后标题、消息与终态完整恢复。最终内容 manifest `478cc96d0d28eaedc4f119057fc7b9ea3f7b5735cd19e4c66302d8ceb689433a` 经 fresh I1 Checker PASS，独立复跑 182 项并确认六类路由 6 项通过，P0-P3 均为 0、首轮 findings 全部 CLOSED。`AGENTS.md` 已沉淀四层单一职责、内部提示词证据边界和失效提示资产规则 | 2026-07-25 |
+| 19：跨会话记忆 | 已完成 | 已完成版本化 PostgreSQL Memory Plane、显式 API 与 frontend 管理面、默认关闭三开关和 provider consent；Run 在 attempt fence 下原子冻结 identity-only snapshot/event，并由逐 turn resolver 瞬态重建正文；三个 control Tool 不写正文或领域 evidence，fence 丢失会终止旧 owner。首轮 exact-manifest Checker 发现“拼接新消息可改变整体指纹并绕过 purge”P1，第二轮复审进一步发现“先查 tombstone、再等待 purge 锁、随后写入”的并发 P1；现已在 purge 时保留内容与来源 message identity 的域分离无正文摘要，并让新 proposal 在读取旧正文前取得与 purge 相同的 `memory_settings` 行锁、复验 source tombstone 且持锁到版本提交。顺序、correction、幂等重放及真实 PostgreSQL barrier 复现均已关闭。最终 Maker 回归：backend 默认 520 passed/52 deselected，真实 PostgreSQL 39 passed/1 skipped，真实 OrbStack Docker 10 passed/1 skipped；frontend Vitest 13 files/67 tests、契约漂移、typecheck 与 production build通过，隔离 Chromium mock 7 passed，真实 React→FastAPI→PostgreSQL/checkpointer→SSE 4 passed且临时 schema 已清理；lock、compileall、diff、wheel/sdist 构建及 Memory 资源打包检查通过。实现内容 manifest `75153d06e7b7fb1885f801b59bcf7185e59aa67250aae17159367680d3aaf78a` 经 fresh-context I1 Checker PASS，独立复跑 PostgreSQL barrier、重新学习/幂等重放及关键安全边界共 20 项，确认两个历史 P1 均 CLOSED，P0-P3 为 0；`AGENTS.md` 已完成自闭环，未迁移用户现有数据库 | 2026-07-26 |
+| 20：跨会话记忆交互收敛 | 已完成 | Frontend 已收敛为一个跨会话记忆总开关和一次简短 provider 授权，普通消息按全部内部门禁自动提交 `default/off`，不再暴露逐 Run 模式或精确版本选择；自然语言提议与遗忘请求在时间线显示来自受控 Memory API 的 280 字有界正文预览并可就地确认，确认后按当前资源状态更新为已记住、已忘记、已清除或已失效。管理面隐藏稳定键、hash 和三门禁，purged tombstone 不占已保存数量与主列表，只在无正文的折叠记录中保留。Live SSE 与 replay 共用 proposal 刷新触发器，刷新后仍可恢复确认入口。Frontend Vitest 13 files/73 tests、契约漂移检查、typecheck、production build、隔离 Chromium mock 7 tests、真实 React→FastAPI→PostgreSQL/checkpointer→SSE 4 tests 均通过，临时 schema 已清理；真实本机页面 conversation `f573b2a0` 提议并确认记忆，conversation `65cbe450` 的 Run `b70c11ff` 自动召回 1 条记忆且无需模式选择，测试记忆随后彻底删除。独立只读复审提出的历史卡片假待确认、盲确认和 replay 列表竞态三项均已关闭，无 OPEN 项；`AGENTS.md` 已沉淀单开关、自动模式和自然语言主入口规则 | 2026-07-26 |
+| 21：主动记忆提议与语义遗忘 | 已完成 | “记住/忘记”已从关键词口令收敛为通用语义：Agent 可对用户单独表达的稳定偏好、用户事实和项目背景主动创建待确认候选，对明确撤销或替换语义发起确认式 forget；候选只接受 user message identity、完整保存原文、每 Run 最多一条，混合当前任务、一次性要求、敏感推断、当前科学结论与闲聊均保持 fail-closed。默认 backend 520 passed/52 skipped，真实 PostgreSQL 3 passed；frontend Vitest 13 files/73 tests、contracts/typecheck/build、mock Chromium 7 tests、真实全栈 4 tests 通过。真实模型无关键词主动提议 Run `8d8ce693`、语义撤销 Run `335202b7`、一次性负例 Run `db7603b0` 均符合预期；混合消息首轮失败 Run `8f5b3c7a` 驱动原子性门禁强化并清除测试候选，复测 Run `c75acf98` 为 0 Task/0 Tool/0 candidate。独立 Checker 的 P2 已 CLOSED，最终 P0-P3 为 0；`AGENTS.md` 已完成自闭环 | 2026-07-26 |
+| 22：记忆质量、交互与验证闭环 | 已完成 | 单消息候选、原文保真、提示策略单一来源、专用不可重试错误、表驱动 harness、PG 并发门槛和前端知情确认/卡片级命令状态已实现；Backend 579 passed/13 skipped、Frontend 77 tests、mock 7 tests、真实全栈 4 tests、构建/契约/compileall/diff 均通过；独立 Checker 首轮两个 P2 修复后复审 PASS，最终 P0-P3 与阻断性 UNKNOWN 为 0 | 2026-07-27 |
+| 23：科研证据闭环与结果一致性 | 已完成 | 科学状态与 provenance、marker/annotation fail-close、当前 Run evidence、backend 权威终答、探索 attempt 隔离、类型化目标验收和分级结果清单均已实现；首轮 Checker 的 P1×4、P2×1 与修复复审的 checkpoint P1 已修复并加入反例。Maker 验证为定向 208 passed/2 skipped、完整 backend 569 passed/53 skipped、真实 PostgreSQL/OrbStack 50 passed/1 skipped、真实原子 Docker 链 1 passed、frontend 77 tests、mock Chromium 7 passed、真实科研产品闭环 5 passed，compileall/diff 通过。最终实现快照经独立 Checker PASS，全部 finding CLOSED，P0-P3 均为 0；`AGENTS.md` 自闭环已完成 | 2026-07-30 |
 
 ### 进度更新规则
 
@@ -762,3 +933,22 @@ Frontend 使用最近已应用的 sequence 发起重连。Backend 先重放已�
 | AD-044 | 顶层 Agent 以统一响应契约约束直接回复、Tool 总结与计划完成：不可覆盖的安全和科学边界之后，当前用户的语言、篇幅、受众、格式、重点与排除项优先；无显式要求时采用最小充分表达，区分事实、观测、推断与建议，结构和类比仅按需使用；该契约由系统提示词与确定性测试维护，不使用机械输出截断或风格 Tool/Skill | 已接受 |
 | AD-045 | 全局响应契约只承载跨领域表达和认识论边界，不充当科研知识库；问题命中 Skill 摘要且答案依赖领域术语的操作定义、适用条件、统计假设或证据边界时，通过既有领域 Skill 渐进加载，答复篇幅不作为是否加载的判断依据；Skill 可只为当前回复提供方法上下文而不要求随后执行 Tool，稳定低风险且不依赖领域方法边界的概念问答仍可直接完成 | 已接受 |
 | AD-046 | 模型可见语义按四层唯一归属：顶层 Agent 负责领域无关的路由、表达与完成约束，Skill 负责可渐进加载的方法知识和证据边界，Tool 契约负责原子科学目标与执行前后条件，复合能力内部提示词负责本能力内的专业决策；未引用或与当前契约冲突的提示资产不得作为并行事实源保留 | 已接受 |
+| AD-047 | 跨会话记忆是独立的 PostgreSQL 应用资源；本阶段只提供 `local-default` 本地安装级 scope，不复用 conversation checkpoint、history、artifact、Skill 或 Run evidence | 已接受 |
+| AD-048 | 每个启用记忆的 Run 在首次模型调用前由当前 attempt owner 原子绑定版本化 snapshot、inputs 与 `memory.context_loaded`；resume 使用精确版本，显式 selected 失效时结构化拒绝 | 已接受 |
+| AD-049 | Memory 正文不进入 checkpoint、Run 请求、公共事件、日志或 frontend local storage；Agent 与 memory Tool 只持久化 item/version/hash identity，并由逐 turn resolver 重新验证后瞬态重建 | 已接受 |
+| AD-050 | Memory 只能提供建议性偏好和历史背景，不能解锁 Skill、授权 Tool、满足计划、成为当前科学证据、扩大 artifact ownership 或覆盖当前用户明确表达要求 | 已接受 |
+| AD-051 | Memory 读取、候选生成和 Agent-visible Tool 独立且默认关闭；发送正文给 LLM provider 前必须持久化明确 consent，所有显式和自动写入共用敏感内容门禁 | 已接受 |
+| AD-052 | Correction 使用不可变版本；forget/revoke 停止未来检索；purge 清除正文及派生明文，并保留内容指纹与来源 message identity 域分离摘要两类无正文 suppression/tombstone；自动 proposal/candidate 在读取旧正文前拒绝被抑制来源，并与 purge 通过同一持久化锁线性化到新版本提交，防止检查后等待 purge 再通过拼接改变整体指纹重新生成已忘记内容 | 已接受 |
+| AD-053 | Memory resolver 只在短事务中解析正文；每个 provider attempt 通过通用 pre-dispatch seam 复验单调 disclosure epoch 与精确 identity。成功 preflight 是已授权在途边界，随后 revoke/purge 阻止所有尚未授权 attempt 与 Agent retry，但不能召回 provider 已接收或已获授权正在发送的请求；禁止跨 provider 调用持有应用数据库事务 | 已接受 |
+| AD-054 | Memory control Tool 以 run/attempt/tool call/request hash 持久化 identity-only 幂等事实；attempt/lease fence 丢失必须终止旧 owner Agent，不得降级成可重试 ToolMessage；Agent 搜索不得自主载入 scientific observation，科学历史只能由用户显式 selected 且始终保持数据集来源边界 | 已接受 |
+| AD-055 | 科研原型的 frontend 只暴露一个跨会话记忆总开关，并在启用时自动使用 `default`、关闭或不可用时使用 `off`；读取、候选与 Agent Tool 三门禁及 `selected` 精确版本模式继续作为 backend 内部控制和高级契约存在。自然语言是记住与忘记的主入口，提议和遗忘确认就近呈现在会话时间线，低频纠正、永久清除与技术身份留在管理区 | 已接受 |
+| AD-056 | “记住/忘记”属于示例语义而非关键词口令：Agent 可以对用户明确表达且跨 conversation 稳定复用的信息主动创建单个待确认候选，也可以对明确撤销语义发起确认式 forget；候选不得自动生效，Agent 不得自行撤销或清除，一次性要求、敏感推断、当前科学结果和普通闲聊保持 fail-closed | 已接受 |
+| AD-057 | Agent 主动候选只能引用当前 Run 的一条 user message，并按原始 Unicode 与空白完整保存该消息及正文 hash；规范化只用于 fingerprint，服务端不再接受多消息拼接。每 Run 候选上限使用不可重试且恢复动作真实的专用错误，不能复用版本冲突语义 | 已接受 |
+| AD-058 | Memory 提示策略由单一模块按职责渲染，仅在当前组合具备 Memory context 或 control Tool 时装配；Hook 管不可信数据与证据隔离，Tool description 管动作契约，Tool hint 管调用和禁用条件 | 已接受 |
+| AD-059 | Memory 候选确认必须允许查看完整原文并同时提供接受与拒绝；拒绝清除候选正文并保留 suppression。Frontend 将自动 snapshot 渲染为 Backend，将 Agent 发起的 search/propose/forget 渲染为 Tool，并按精确 memory item identity 在对应卡片显示操作错误与忙碌状态 | 已接受 |
+| AD-060 | Memory 行为验证采用表驱动语义场景；受控模型证明确定性状态和产品链路，真实模型只提供带 prompt/model 身份的可选行为观察。不得用固定关键词分支宣称提示词泛化已经通过 | 已接受 |
+| AD-061 | 能力运行完成、科学目标完成与科学事实验证必须分别表达；只有通过领域后置校验且绑定当前 Run 来源的事实才能支撑当前数据结论，文件存在、类型合法、stdout 或模型自评均不能替代科学验证 | 已接受 |
+| AD-062 | Dataset 科学状态与 lineage 必须从实际输出、操作处置和后置校验生成；执行、复用、跳过与拒绝保持可区分，任何 Tool 不得根据名称、计划意图、请求参数或孤立 metadata 无条件宣称状态已经改变；AnnData metadata 只能作为线索，必须与矩阵特征或可信 lineage 一致后才能形成 verified state | 已接受 |
+| AD-063 | 领域 Tool 形成有界的当前 Run 科学证据集合；自然完成与结构化完成共用最终回复证据门禁，候选回复中的执行状态、数字、Artifact 和证据等级必须与权威证据一致，被拒绝的候选不得进入公共事件；在没有类型化 claim 通道前，携带当前 Run 科学证据的公共终答必须由 backend 从已验证事实确定性渲染，模型自由文本与有限自然语言正则只能用于诊断，不能作为完整性或安全边界 | 已接受 |
+| AD-064 | 探索性分析必须在调用时声明类型化验收目标，并提供与该目标对应的结果清单，由 backend 独立校验关键统计和跨产物一致性；局部 H5AD shape、marker 行数或其他无关事实不能自动使整体目标完成；同语义 cluster 产物必须对账完整的 ID、逐簇 count 和 proportion 映射；未验证的自定义文件只能作为非权威草稿，不能使科学目标完成或支撑最终事实 | 已接受 |
+| AD-065 | Marker 阈值、统计输入空间、有限且合法范围的统计量和 cluster 覆盖属于硬输出契约，不得静默降级；annotation 入口必须具备完整、类型化的 selection evidence，缺失不能解释为覆盖完整；注释验证失败或证据不支持必须失败关闭并进入人工复核，启发式证据分数不得命名或解释为校准置信概率 | 已接受 |

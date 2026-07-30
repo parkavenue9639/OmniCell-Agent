@@ -50,6 +50,13 @@ def scorer_node(state: ClusterAnnotationState) -> Dict[str, Any]:
 
         final_score = max(0.0, base_score - penalty)
 
+    if bool(quality_scores.get("validator_failed", False)):
+        # Validator 调用或结构化校验失败时，没有独立复核证据。
+        final_score = 0.0
+    elif quality_scores.get("validator_supported") is False:
+        # 明确不支持的标签可以保留为待复核候选，但不能维持高分。
+        final_score = min(final_score, 50.0)
+
     logger.info(f"[Cluster {cluster_id}] 启发式证据评分完成 => {final_score}/100")
 
     new_scores = dict(quality_scores) if isinstance(quality_scores, dict) else {}

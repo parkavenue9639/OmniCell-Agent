@@ -33,6 +33,19 @@ from .contracts import (
     ErrorEnvelope,
     EventReplayResponse,
     LivenessResponse,
+    MemoryApproveRequest,
+    MemoryCommandResponse,
+    MemoryCorrectRequest,
+    MemoryCreateRequest,
+    MemoryForgetRequest,
+    MemoryKind,
+    MemoryListResponse,
+    MemoryProviderConsentRequest,
+    MemoryPurgeRequest,
+    MemoryRead,
+    MemorySettingsRead,
+    MemorySettingsUpdateRequest,
+    MemoryStatus,
     ReadinessResponse,
     ReviewDecisionRequest,
     ReviewDecisionResponse,
@@ -42,6 +55,7 @@ from .contracts import (
     RunCreateRequest,
     RunCreateResponse,
     RunHistoryResponse,
+    RunMemoryContextRead,
     RunRead,
     RunResumeRequest,
     RunResumeResponse,
@@ -89,6 +103,11 @@ def _error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
 # 每个入口都可能在 path、query、header 或 body 解析阶段返回 422；显式声明
 # 可以覆盖 FastAPI 默认的 HTTPValidationError schema，与运行时 envelope 保持一致。
 router = APIRouter(prefix="/api/v1", responses=_error_responses(422))
+_MEMORY_CACHE_CONTROL = "no-store, private"
+
+
+def _disable_memory_response_caching(response: Response) -> None:
+    response.headers["Cache-Control"] = _MEMORY_CACHE_CONTROL
 
 
 def _artifact_chunks(stream: BinaryIO, chunk_size: int = 1024 * 1024):
@@ -127,6 +146,179 @@ async def get_readiness(
     if not result.ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return result
+
+
+@router.get(
+    "/memory/settings",
+    response_model=MemorySettingsRead,
+    operation_id="getMemorySettings",
+)
+async def get_memory_settings(service: Service):
+    return await service.get_memory_settings()
+
+
+@router.patch(
+    "/memory/settings",
+    response_model=MemorySettingsRead,
+    operation_id="updateMemorySettings",
+    responses=_error_responses(400, 409),
+)
+async def update_memory_settings(
+    body: MemorySettingsUpdateRequest,
+    service: Service,
+):
+    return await service.update_memory_settings(
+        use_memory=body.use_memory,
+        generate_candidates=body.generate_candidates,
+        enable_agent_tools=body.enable_agent_tools,
+    )
+
+
+@router.post(
+    "/memory/provider-consent",
+    response_model=MemorySettingsRead,
+    operation_id="decideMemoryProviderConsent",
+    responses=_error_responses(400, 409),
+)
+async def decide_memory_provider_consent(
+    body: MemoryProviderConsentRequest,
+    service: Service,
+):
+    return await service.decide_memory_provider_consent(
+        decision=body.decision,
+        statement_version=body.statement_version,
+    )
+
+
+@router.get(
+    "/memories",
+    response_model=MemoryListResponse,
+    operation_id="listMemories",
+    responses=_error_responses(400),
+)
+async def list_memories(
+    service: Service,
+    response: Response,
+    kind: MemoryKind | None = None,
+    memory_status: MemoryStatus | None = Query(default=None, alias="status"),
+    cursor: str | None = Query(default=None, max_length=2_048),
+    limit: int = Query(default=50, ge=1, le=100),
+):
+    _disable_memory_response_caching(response)
+    return await service.list_memories(
+        kind=kind,
+        status=memory_status,
+        cursor=cursor,
+        limit=limit,
+    )
+
+
+@router.post(
+    "/memories",
+    response_model=MemoryRead,
+    status_code=status.HTTP_201_CREATED,
+    operation_id="createMemory",
+    responses=_error_responses(400, 409),
+)
+async def create_memory(
+    body: MemoryCreateRequest,
+    service: Service,
+    response: Response,
+):
+    _disable_memory_response_caching(response)
+    return await service.create_memory(body)
+
+
+@router.get(
+    "/memories/{memory_id}",
+    response_model=MemoryRead,
+    operation_id="getMemory",
+    responses=_error_responses(404),
+)
+async def get_memory(memory_id: UUID, service: Service, response: Response):
+    _disable_memory_response_caching(response)
+    return await service.get_memory(memory_id)
+
+
+@router.post(
+    "/memories/{memory_id}/approve",
+    response_model=MemoryCommandResponse,
+    operation_id="approveMemory",
+    responses=_error_responses(404, 409),
+)
+async def approve_memory(
+    memory_id: UUID,
+    body: MemoryApproveRequest,
+    service: Service,
+    response: Response,
+):
+    _disable_memory_response_caching(response)
+    return MemoryCommandResponse(
+        memory=await service.approve_memory(
+            memory_id,
+            expected_version=body.expected_version,
+        )
+    )
+
+
+@router.post(
+    "/memories/{memory_id}/correct",
+    response_model=MemoryCommandResponse,
+    operation_id="correctMemory",
+    responses=_error_responses(400, 404, 409),
+)
+async def correct_memory(
+    memory_id: UUID,
+    body: MemoryCorrectRequest,
+    service: Service,
+    response: Response,
+):
+    _disable_memory_response_caching(response)
+    return MemoryCommandResponse(
+        memory=await service.correct_memory(memory_id, body)
+    )
+
+
+@router.post(
+    "/memories/{memory_id}/forget",
+    response_model=MemoryCommandResponse,
+    operation_id="forgetMemory",
+    responses=_error_responses(404, 409),
+)
+async def forget_memory(
+    memory_id: UUID,
+    body: MemoryForgetRequest,
+    service: Service,
+    response: Response,
+):
+    _disable_memory_response_caching(response)
+    return MemoryCommandResponse(
+        memory=await service.forget_memory(
+            memory_id,
+            expected_version=body.expected_version,
+        )
+    )
+
+
+@router.post(
+    "/memories/{memory_id}/purge",
+    response_model=MemoryCommandResponse,
+    operation_id="purgeMemory",
+    responses=_error_responses(404, 409),
+)
+async def purge_memory(
+    memory_id: UUID,
+    body: MemoryPurgeRequest,
+    service: Service,
+    response: Response,
+):
+    _disable_memory_response_caching(response)
+    return MemoryCommandResponse(
+        memory=await service.purge_memory(
+            memory_id,
+            expected_version=body.expected_version,
+        )
+    )
 
 
 @router.post(
@@ -205,6 +397,11 @@ async def create_run(
         conversation_id=conversation_id,
         goal=body.goal,
         input_artifact_ids=body.input_artifact_ids,
+        memory_mode=body.memory_mode,
+        selected_memories=[
+            item.model_dump(mode="python")
+            for item in body.selected_memories
+        ],
         request_key=body.request_key or idempotency_key,
     )
 
@@ -217,6 +414,16 @@ async def create_run(
 )
 async def get_run(run_id: UUID, service: Service):
     return await service.get_run(run_id)
+
+
+@router.get(
+    "/runs/{run_id}/memory-context",
+    response_model=RunMemoryContextRead,
+    operation_id="getRunMemoryContext",
+    responses=_error_responses(404),
+)
+async def get_run_memory_context(run_id: UUID, service: Service):
+    return await service.get_run_memory_context(run_id)
 
 
 @router.get(

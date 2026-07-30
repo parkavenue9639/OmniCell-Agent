@@ -37,7 +37,7 @@ describe("run submission", () => {
     });
     const submission = prepareRunSubmission(
       "13269a73-8a64-47f6-ad95-6d6063a3e5cc",
-      { goal: "分析单细胞数据" },
+      { goal: "分析单细胞数据", memory_mode: "off" },
       "stable-run-request-key",
     );
 
@@ -51,6 +51,7 @@ describe("run submission", () => {
       );
       expect(await request.json()).toMatchObject({
         goal: "分析单细胞数据",
+        memory_mode: "off",
         request_key: "stable-run-request-key",
       });
     }
@@ -60,10 +61,86 @@ describe("run submission", () => {
     expect(() =>
       prepareRunSubmission(
         "13269a73-8a64-47f6-ad95-6d6063a3e5cc",
-        { goal: "分析", request_key: "body-key" },
+        { goal: "分析", memory_mode: "off", request_key: "body-key" },
         "header-key",
       ),
     ).toThrow("request_key 必须与 Idempotency-Key 一致");
+  });
+
+  it("deep-copies and freezes retry inputs without aliasing selected versions", async () => {
+    const requests: Request[] = [];
+    const fetchMock = vi.fn(async (request: Request) => {
+      requests.push(request.clone());
+      return new Response(JSON.stringify(runResponse), {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    const client = createApiClient({
+      baseUrl: "https://api.example.test",
+      fetch: fetchMock,
+    });
+    const inputArtifactIds = ["artifact-v1"];
+    const selectedMemories = [
+      {
+        item_id: "11111111-1111-4111-8111-111111111111",
+        version_id: "22222222-2222-4222-8222-222222222222",
+      },
+    ];
+    const submission = prepareRunSubmission(
+      "13269a73-8a64-47f6-ad95-6d6063a3e5cc",
+      {
+        goal: "使用精确记忆版本",
+        memory_mode: "selected",
+        input_artifact_ids: inputArtifactIds,
+        selected_memories: selectedMemories,
+      },
+      "selected-retry-key",
+    );
+
+    inputArtifactIds[0] = "artifact-v2";
+    selectedMemories[0]!.version_id =
+      "33333333-3333-4333-8333-333333333333";
+    inputArtifactIds.push("artifact-v3");
+    selectedMemories.push({
+      item_id: "44444444-4444-4444-8444-444444444444",
+      version_id: "55555555-5555-4555-8555-555555555555",
+    });
+
+    expect(Object.isFrozen(submission.body.input_artifact_ids)).toBe(true);
+    expect(Object.isFrozen(submission.body.selected_memories)).toBe(true);
+    expect(Object.isFrozen(submission.body.selected_memories?.[0])).toBe(true);
+    expect(() => submission.body.input_artifact_ids?.push("mutate")).toThrow(
+      TypeError,
+    );
+    expect(
+      () =>
+        submission.body.selected_memories?.push({
+          item_id: "66666666-6666-4666-8666-666666666666",
+          version_id: "77777777-7777-4777-8777-777777777777",
+        }),
+    ).toThrow(TypeError);
+    expect(() => {
+      submission.body.selected_memories![0]!.version_id =
+        "88888888-8888-4888-8888-888888888888";
+    }).toThrow(TypeError);
+
+    await submitRun(submission, { client });
+    await submitRun(submission, { client });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const request of requests) {
+      expect(await request.json()).toMatchObject({
+        input_artifact_ids: ["artifact-v1"],
+        selected_memories: [
+          {
+            item_id: "11111111-1111-4111-8111-111111111111",
+            version_id: "22222222-2222-4222-8222-222222222222",
+          },
+        ],
+        request_key: "selected-retry-key",
+      });
+    }
   });
 
   it("replays every event page until has_more is false", async () => {

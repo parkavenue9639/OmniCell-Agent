@@ -65,6 +65,10 @@ from .events import (
     EventType,
     MessageCompletedPayload,
     MessageRole,
+    MemoryForgetRequestedPayload,
+    MemoryContextLoadedPayload,
+    MemoryProposalCreatedPayload,
+    MemorySearchCompletedPayload,
     ReviewRequestedPayload,
     ReviewResolvedPayload,
     RuntimeCommandCompletedPayload,
@@ -84,6 +88,11 @@ from .events import (
     TaskUpdatedPayload,
 )
 from .status import ReviewDecision, ReviewStatus, RunStatus, TaskStatus, is_terminal_run_status
+from .memory import (
+    PreparedMemoryContext,
+    RunMemoryPreparationError,
+    RunMemoryRuntime,
+)
 from .titles import (
     ConversationTitleGenerator,
     DeterministicConversationTitleGenerator,
@@ -405,6 +414,24 @@ class RunLifecycleObserver(AgentObserver):
             result: EventPayload = AgentTurnStartedPayload(
                 turn_index=turn,
                 remaining_turns=max(self._max_turns - turn, 0),
+            )
+        elif event_type is EventType.MEMORY_SEARCH_COMPLETED:
+            result = MemorySearchCompletedPayload(
+                tool_call_id=str(payload["tool_call_id"])[:255],
+                outcome=str(payload["outcome"]),
+                inputs=list(payload.get("inputs") or []),
+            )
+        elif event_type is EventType.MEMORY_PROPOSAL_CREATED:
+            result = MemoryProposalCreatedPayload(
+                tool_call_id=str(payload["tool_call_id"])[:255],
+                memory=dict(payload["memory"]),
+                status="proposed",
+            )
+        elif event_type is EventType.MEMORY_FORGET_REQUESTED:
+            result = MemoryForgetRequestedPayload(
+                tool_call_id=str(payload["tool_call_id"])[:255],
+                memory=dict(payload["memory"]),
+                status="confirmation_required",
             )
         elif event_type in {
             EventType.AGENT_TOOL_STARTED,
@@ -858,6 +885,7 @@ class RunCoordinator:
         agent_factory: AgentLoopFactory,
         workspace_root: str | Path,
         event_log: RunEventLog | None = None,
+        memory_runtime: RunMemoryRuntime | None = None,
         title_generator: ConversationTitleGenerator | None = None,
         worker_id: str | None = None,
         lease_duration: timedelta = timedelta(minutes=2),
@@ -871,6 +899,7 @@ class RunCoordinator:
         self._workspace_root = Path(workspace_root).expanduser().resolve(strict=False)
         self._workspace_root.mkdir(parents=True, exist_ok=True)
         self.event_log = event_log or RunEventLog(unit_of_work)
+        self._memory_runtime = memory_runtime
         self._title_generator = (
             title_generator or DeterministicConversationTitleGenerator()
         )
@@ -1018,6 +1047,9 @@ class RunCoordinator:
         conversation_id: UUID,
         goal: str,
         input_artifact_ids: list[UUID] | tuple[UUID, ...] = (),
+        memory_mode: str = "off",
+        selected_memories: list[Mapping[str, Any]]
+        | tuple[Mapping[str, Any], ...] = (),
         request_key: str | None = None,
     ) -> Run:
         normalized_goal = goal.strip()
@@ -1028,6 +1060,43 @@ class RunCoordinator:
         normalized_artifact_ids = tuple(input_artifact_ids)
         if len(set(normalized_artifact_ids)) != len(normalized_artifact_ids):
             raise ValueError("input artifacts 不允许重复")
+        normalized_memory_mode = memory_mode.strip().lower()
+        if normalized_memory_mode not in {"off", "default", "selected"}:
+            raise ValueError("memory_mode 必须是 off、default 或 selected")
+        if len(selected_memories) > 32:
+            raise ValueError("selected memories 不能超过 32 个")
+        normalized_selected_memories: list[dict[str, str]] = []
+        for selected in selected_memories:
+            try:
+                item_id = UUID(str(selected["item_id"]))
+                version_id = UUID(str(selected["version_id"]))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("selected memory identity 非法") from exc
+            normalized_selected_memories.append(
+                {
+                    "item_id": str(item_id),
+                    "version_id": str(version_id),
+                }
+            )
+        selected_identity_pairs = {
+            (item["item_id"], item["version_id"])
+            for item in normalized_selected_memories
+        }
+        if len(selected_identity_pairs) != len(normalized_selected_memories):
+            raise ValueError("selected memories 不允许重复")
+        if normalized_memory_mode == "selected":
+            if not normalized_selected_memories:
+                raise ValueError("selected memory mode 缺少精确版本引用")
+        elif normalized_selected_memories:
+            raise ValueError("只有 selected memory mode 可以携带引用")
+        request_payload = {
+            "goal": normalized_goal,
+            "input_artifact_ids": [
+                str(item) for item in normalized_artifact_ids
+            ],
+            "memory_mode": normalized_memory_mode,
+            "selected_memories": normalized_selected_memories,
+        }
         normalized_key = request_key.strip() if request_key else None
         suggested_title = await self._suggest_initial_title(
             conversation_id,
@@ -1050,13 +1119,7 @@ class RunCoordinator:
                         request_key=normalized_key,
                     )
                     if existing is not None:
-                        expected_payload = {
-                            "goal": normalized_goal,
-                            "input_artifact_ids": [
-                                str(item) for item in normalized_artifact_ids
-                            ],
-                        }
-                        if existing.request_payload != expected_payload:
+                        if existing.request_payload != request_payload:
                             raise RunConflictError(
                                 "request_key 已用于不同的 run request"
                             )
@@ -1079,12 +1142,7 @@ class RunCoordinator:
                         conversation_id=conversation_id,
                         request_key=normalized_key,
                         status=RunStatus.PENDING.value,
-                        request_payload={
-                            "goal": normalized_goal,
-                            "input_artifact_ids": [
-                                str(item) for item in normalized_artifact_ids
-                            ],
-                        },
+                        request_payload=request_payload,
                         checkpoint_thread_id=f"conversation:{conversation_id}",
                     )
                 )
@@ -1115,13 +1173,7 @@ class RunCoordinator:
                         request_key=normalized_key,
                     )
                     if existing is not None:
-                        expected_payload = {
-                            "goal": normalized_goal,
-                            "input_artifact_ids": [
-                                str(item) for item in normalized_artifact_ids
-                            ],
-                        }
-                        if existing.request_payload != expected_payload:
+                        if existing.request_payload != request_payload:
                             raise RunConflictError(
                                 "request_key 已用于不同的 run request"
                             )
@@ -1609,6 +1661,11 @@ class RunCoordinator:
                 review_id=review_id,
                 expected_attempt=attempt,
             )
+            await self._prepare_memory_context(
+                run.id,
+                goal=goal,
+                expected_attempt=attempt,
+            )
             for artifact in artifacts:
                 await asyncio.to_thread(
                     store.register_trusted,
@@ -1633,6 +1690,20 @@ class RunCoordinator:
                 ),
                 checkpointer=self._checkpointer,
                 input_artifacts=input_artifacts,
+                memory_resolver=(
+                    self._memory_runtime.resolver(run.id)
+                    if self._memory_runtime is not None
+                    else None
+                ),
+                memory_tools=(
+                    await self._memory_runtime.control_port(
+                        run.id,
+                        worker_id=self.worker_id,
+                        expected_attempt=attempt,
+                    )
+                    if self._memory_runtime is not None
+                    else None
+                ),
                 cancellation=token,
                 observer=observer,
             )
@@ -1684,6 +1755,16 @@ class RunCoordinator:
                 )
         except RunLeaseLostError:
             return
+        except RunMemoryPreparationError as exc:
+            if attempt is not None:
+                await await_cancellation_safe(
+                    self._finalize_failed(
+                        run_id,
+                        error_code=exc.error_code,
+                        summary=exc.summary,
+                        expected_attempt=attempt,
+                    )
+                )
         except RunHeartbeatError as exc:
             if attempt is not None:
                 logger.error(
@@ -1884,6 +1965,63 @@ class RunCoordinator:
             notify = True
         if notify:
             await self.event_log.notifier.notify(run_id)
+
+    async def _prepare_memory_context(
+        self,
+        run_id: UUID,
+        *,
+        goal: str,
+        expected_attempt: int,
+    ) -> PreparedMemoryContext | None:
+        """Freeze memory identities and their public event under one attempt fence."""
+
+        if self._memory_runtime is None:
+            return None
+        prepared: PreparedMemoryContext | None
+        async with self._unit_of_work() as unit_of_work:
+            repositories = unit_of_work.repositories
+            assert repositories is not None
+            run = self._require_execution_owner(
+                await repositories.runs.get_for_update(run_id),
+                run_id=run_id,
+                expected_attempt=expected_attempt,
+            )
+            if run.status == RunStatus.CANCELLING.value:
+                raise RunCancelledError("run cancellation requested")
+            if run.status != RunStatus.RUNNING.value:
+                raise RunLeaseLostError(
+                    f"run {run_id} 不再处于 running 状态"
+                )
+            prepared = await self._memory_runtime.prepare_snapshot(
+                repositories=repositories,
+                run=run,
+                goal=goal,
+                worker_id=self.worker_id,
+                expected_attempt=expected_attempt,
+            )
+            if prepared is None:
+                return None
+            await repositories.events.append(
+                event_id=lifecycle_event_id(
+                    run_id,
+                    "memory:context-loaded",
+                ),
+                run_id=run_id,
+                event_type=EventType.MEMORY_CONTEXT_LOADED.value,
+                payload=MemoryContextLoadedPayload(
+                    snapshot_id=prepared.snapshot_id,
+                    mode=prepared.mode,
+                    outcome=prepared.outcome,
+                    inputs=[
+                        item.public_identity()
+                        for item in prepared.inputs
+                    ],
+                    content_bytes=prepared.content_bytes,
+                    degraded_code=prepared.degraded_code,
+                ).model_dump(mode="json"),
+            )
+        await self.event_log.notifier.notify(run_id)
+        return prepared
 
     async def _reconcile_recovery_execution(
         self,

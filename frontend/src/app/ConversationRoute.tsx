@@ -1,22 +1,37 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import {
+  approveMemory,
   cancelRun,
+  correctMemory,
+  createMemory,
   createConversation,
   decideReview,
   downloadArtifact,
+  forgetMemory,
   getAllConversationHistory,
   getConversation,
+  getMemorySettings,
   listAllArtifacts,
   listConversations,
+  listAllMemories,
   listReviews,
   prepareRunSubmission,
+  purgeMemory,
   replayAllRunEvents,
   submitRun,
+  updateMemoryProviderConsent,
+  updateMemorySettings,
   uploadArtifact,
   type Artifact,
+  type Memory,
   type Run,
   type RunHistoryResponse,
 } from "../api";
@@ -30,6 +45,8 @@ import { parsePersistedEvent } from "../stream/event-validator";
 import { buildConversationViewModel } from "./conversation-view-model";
 
 const GLOBAL_SCOPE = "__global__";
+const MEMORY_PROVIDER_CONSENT_VERSION = "memory-provider-v1";
+export const MEMORY_COMMAND_MUTATION_KEY = ["memory", "command"] as const;
 
 const queryKeys = {
   conversations: ["conversations"] as const,
@@ -37,6 +54,8 @@ const queryKeys = {
   history: (id: string) => ["conversation", id, "history"] as const,
   artifacts: (id: string) => ["conversation", id, "artifacts"] as const,
   artifactContent: (id: string) => ["artifact", id, "content"] as const,
+  memorySettings: ["memory", "settings"] as const,
+  memories: ["memory", "items"] as const,
   reviews: (id: string, runId: string) =>
     ["conversation", id, "run", runId, "reviews"] as const,
 };
@@ -44,6 +63,53 @@ const queryKeys = {
 interface ScopedCommandError {
   readonly scope: string;
   readonly message: string;
+}
+
+type MemoryCommand =
+  | {
+      readonly kind: "setting";
+      readonly setting: "generate_candidates" | "enable_agent_tools";
+      readonly enabled: boolean;
+    }
+  | { readonly kind: "enable" }
+  | { readonly kind: "disable" }
+  | { readonly kind: "revoke_consent" }
+  | {
+      readonly kind: "create";
+      readonly memoryKind:
+        | "response_preference"
+        | "profile_fact"
+        | "project_context"
+        | "scientific_observation";
+      readonly stableKey?: string;
+      readonly content: string;
+      readonly datasetScope?: Readonly<Record<string, string>>;
+    }
+  | {
+      readonly kind: "approve" | "forget" | "purge";
+      readonly memoryId: string;
+      readonly expectedVersion: number;
+    }
+  | {
+      readonly kind: "correct";
+      readonly memoryId: string;
+      readonly expectedVersion: number;
+      readonly content: string;
+    };
+
+interface MemoryCommandIdentity {
+  readonly kind: MemoryCommand["kind"];
+  readonly memoryId?: string;
+}
+
+interface MemoryCommandFailure extends MemoryCommandIdentity {
+  readonly message: string;
+}
+
+function memoryCommandIdentity(command: MemoryCommand): MemoryCommandIdentity {
+  return "memoryId" in command
+    ? { kind: command.kind, memoryId: command.memoryId }
+    : { kind: command.kind };
 }
 
 function message(error: unknown): string {
@@ -57,6 +123,29 @@ function scopeFor(conversationId: string | undefined): string {
 function timestamp(value: string): number {
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
+export function removeMemoryFromCachedList(
+  memories: readonly Memory[] | undefined,
+  memoryId: string,
+): readonly Memory[] {
+  return (memories ?? []).filter((memory) => memory.memory_id !== memoryId);
+}
+
+export function clearMemoryCommandMutationCache(queryClient: QueryClient): void {
+  const mutationCache = queryClient.getMutationCache();
+  for (const mutation of mutationCache.findAll({
+    exact: true,
+    mutationKey: MEMORY_COMMAND_MUTATION_KEY,
+  })) {
+    mutationCache.remove(mutation);
+  }
+}
+
+export function eventRefreshesMemories(event: {
+  readonly type: string;
+}): boolean {
+  return event.type === "memory.proposal_created";
 }
 
 export function selectCurrentRun(
@@ -131,15 +220,28 @@ export function ConversationRoute() {
   const reviewInFlight = useRef(false);
   const uploadInFlight = useRef(false);
   const downloadInFlight = useRef(false);
+  const memoryCommandInFlight = useRef(false);
   const [selectedDatasets, setSelectedDatasets] = useState<
     Readonly<Record<string, string>>
   >({});
   const [commandError, setCommandError] = useState<ScopedCommandError>();
+  const [memoryCommandError, setMemoryCommandError] =
+    useState<MemoryCommandFailure>();
   const [projectionError, setProjectionError] = useState<string>();
 
   const conversationsQuery = useQuery({
     queryKey: queryKeys.conversations,
     queryFn: () => listConversations({ limit: 100 }),
+  });
+  const memorySettingsQuery = useQuery({
+    queryKey: queryKeys.memorySettings,
+    queryFn: () => getMemorySettings(),
+    retry: false,
+  });
+  const memoriesQuery = useQuery({
+    queryKey: queryKeys.memories,
+    queryFn: () => listAllMemories(),
+    retry: false,
   });
   const conversationQuery = useQuery({
     queryKey: queryKeys.conversation(conversationId ?? "none"),
@@ -241,6 +343,7 @@ export function ConversationRoute() {
     setProjectionError(undefined);
 
     void (async () => {
+      let replayRequiresMemoryRefresh = false;
       for (const run of orderedRuns) {
         const replay = await replayAllRunEvents(run.run_id, {
           signal: controller.signal,
@@ -251,15 +354,26 @@ export function ConversationRoute() {
         ) {
           throw new Error("历史事件身份与 conversation 不一致");
         }
+        const replayEvents = replay.events.map((event) =>
+          parsePersistedEvent(event),
+        );
+        replayRequiresMemoryRefresh ||= replayEvents.some(
+          eventRefreshesMemories,
+        );
         const result = useRunProjectionStore.getState().hydrateRun(
           run.run_id,
           conversationId,
-          replay.events.map((event) => parsePersistedEvent(event)),
+          replayEvents,
           run.last_sequence,
         );
         if (result.kind === "gap" || result.kind === "conflict") {
           throw new Error(result.message);
         }
+      }
+      if (replayRequiresMemoryRefresh) {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.memories,
+        });
       }
       if (currentRun === undefined) return;
       const { followRunEvents } = await import("../stream/reconnect-policy");
@@ -286,6 +400,11 @@ export function ConversationRoute() {
             if (event.type === "artifact.created") {
               void queryClient.invalidateQueries({
                 queryKey: queryKeys.artifacts(conversationId),
+              });
+            }
+            if (eventRefreshesMemories(event)) {
+              void queryClient.invalidateQueries({
+                queryKey: queryKeys.memories,
               });
             }
             if (event.type === "run.created" || event.type === "run.started") {
@@ -356,15 +475,27 @@ export function ConversationRoute() {
       targetConversationId,
       goal,
       inputArtifactIds,
+      memoryMode,
+      selectedMemories,
     }: {
       targetConversationId: string;
       goal: string;
       inputArtifactIds: readonly string[];
+      memoryMode: "off" | "default" | "selected";
+      selectedMemories: readonly {
+        readonly itemId: string;
+        readonly versionId: string;
+      }[];
     }) =>
       submitRun(
         prepareRunSubmission(targetConversationId, {
           goal,
           input_artifact_ids: [...inputArtifactIds],
+          memory_mode: memoryMode,
+          selected_memories: selectedMemories.map((memory) => ({
+            item_id: memory.itemId,
+            version_id: memory.versionId,
+          })),
         }),
       ),
     onMutate: ({ targetConversationId }) =>
@@ -468,6 +599,144 @@ export function ConversationRoute() {
       downloadInFlight.current = false;
     },
   });
+  const memoryMutation = useMutation({
+    mutationKey: MEMORY_COMMAND_MUTATION_KEY,
+    // Memory command variables and responses can contain plaintext. Retain
+    // them for no longer than the active mutation itself.
+    gcTime: 0,
+    mutationFn: async (command: MemoryCommand) => {
+      switch (command.kind) {
+        case "setting":
+          return updateMemorySettings({
+            [command.setting]: command.enabled,
+          });
+        case "enable":
+          if (!memorySettingsQuery.data?.provider_consent_granted) {
+            await updateMemoryProviderConsent({
+              decision: "grant",
+              statement_version: MEMORY_PROVIDER_CONSENT_VERSION,
+              confirmed: true,
+            });
+          }
+          return updateMemorySettings({
+            use_memory: true,
+            generate_candidates: true,
+            enable_agent_tools: true,
+          });
+        case "disable":
+          return updateMemorySettings({
+            use_memory: false,
+            generate_candidates: false,
+            enable_agent_tools: false,
+          });
+        case "revoke_consent":
+          if (
+            memorySettingsQuery.data?.use_memory ||
+            memorySettingsQuery.data?.generate_candidates ||
+            memorySettingsQuery.data?.enable_agent_tools
+          ) {
+            await updateMemorySettings({
+              use_memory: false,
+              generate_candidates: false,
+              enable_agent_tools: false,
+            });
+          }
+          return updateMemoryProviderConsent({
+            decision: "revoke",
+            statement_version: MEMORY_PROVIDER_CONSENT_VERSION,
+            confirmed: true,
+          });
+        case "create":
+          return createMemory({
+            kind: command.memoryKind,
+            stable_key: command.stableKey,
+            content: command.content,
+            dataset_scope: command.datasetScope
+              ? { ...command.datasetScope }
+              : undefined,
+            source_message_ids: [],
+          });
+        case "approve":
+          return approveMemory(command.memoryId, {
+            expected_version: command.expectedVersion,
+          });
+        case "correct":
+          return correctMemory(command.memoryId, {
+            expected_version: command.expectedVersion,
+            content: command.content,
+            source_message_ids: [],
+          });
+        case "forget":
+          return forgetMemory(command.memoryId, {
+            expected_version: command.expectedVersion,
+            confirmed: true,
+          });
+        case "purge":
+          return purgeMemory(command.memoryId, {
+            expected_version: command.expectedVersion,
+            confirmed: true,
+          });
+      }
+    },
+    onMutate: () => setMemoryCommandError(undefined),
+    onSuccess: async (_, command) => {
+      if (command.kind === "purge") {
+        // Unmount the purged item before refetching. Filtering, rather than
+        // invalidation alone, guarantees its old body and the card's local
+        // correction draft disappear synchronously from the mounted UI.
+        queryClient.setQueryData<readonly Memory[]>(
+          queryKeys.memories,
+          (current) => removeMemoryFromCachedList(current, command.memoryId),
+        );
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.memorySettings }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.memories }),
+      ]);
+    },
+    onError: async (error, command) => {
+      setMemoryCommandError({
+        ...memoryCommandIdentity(command),
+        message: message(error),
+      });
+      // A compound command can fail after an earlier step succeeded (for
+      // example consent grant followed by setting update). Re-read both
+      // authorities before another Run or memory command is allowed.
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.memorySettings,
+          refetchType: "active",
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.memories,
+          refetchType: "active",
+        }),
+      ]);
+    },
+  });
+
+  const runMemoryCommand = async (
+    command: MemoryCommand,
+  ): Promise<boolean> => {
+    if (memoryCommandInFlight.current || runInFlight.current) {
+      return false;
+    }
+    memoryCommandInFlight.current = true;
+    try {
+      await memoryMutation.mutateAsync(command);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      // Reset first so the hook observer no longer owns the completed
+      // mutation, then remove every same-key entry synchronously. This keeps
+      // create/correct plaintext out of MutationCache and makes purge's
+      // completion boundary cover all frontend JS caches under our control.
+      memoryMutation.reset();
+      clearMemoryCommandMutationCache(queryClient);
+      memoryCommandInFlight.current = false;
+    }
+  };
 
   const loading =
     conversationsQuery.isPending ||
@@ -483,6 +752,23 @@ export function ConversationRoute() {
     artifactsQuery.error ??
     reviewsQuery.error ??
     (projectionError ? new Error(projectionError) : undefined);
+  const pendingMemoryCommand =
+    memoryMutation.isPending && memoryMutation.variables
+      ? {
+          ...memoryCommandIdentity(memoryMutation.variables),
+          pending: true,
+        }
+      : undefined;
+  const visibleMemoryCommand = pendingMemoryCommand
+    ? pendingMemoryCommand
+    : memoryCommandError
+      ? {
+          kind: memoryCommandError.kind,
+          memoryId: memoryCommandError.memoryId,
+          pending: false,
+          errorMessage: memoryCommandError.message,
+        }
+      : undefined;
   const model = useMemo(
     () =>
       buildConversationViewModel({
@@ -511,6 +797,20 @@ export function ConversationRoute() {
             ? downloadMutation.variables?.artifact.artifact_id
             : undefined,
         },
+        memory: {
+          settings: memorySettingsQuery.data,
+          items: memoriesQuery.data ?? [],
+          loading:
+            memorySettingsQuery.isPending || memoriesQuery.isPending,
+          errorMessage: memorySettingsQuery.error
+            ? message(memorySettingsQuery.error)
+            : memoriesQuery.error
+              ? message(memoriesQuery.error)
+              : undefined,
+          commandErrorMessage: memoryCommandError?.message,
+          commandsPending: memoryMutation.isPending,
+          command: visibleMemoryCommand,
+        },
       }),
     [
       loading,
@@ -534,6 +834,15 @@ export function ConversationRoute() {
       reviewMutation.variables,
       downloadMutation.isPending,
       downloadMutation.variables,
+      memorySettingsQuery.data,
+      memorySettingsQuery.isPending,
+      memorySettingsQuery.error,
+      memoriesQuery.data,
+      memoriesQuery.isPending,
+      memoriesQuery.error,
+      memoryCommandError,
+      memoryMutation.isPending,
+      visibleMemoryCommand,
     ],
   );
 
@@ -583,8 +892,15 @@ export function ConversationRoute() {
             clearCommandError(scopeFor(conversationId));
             void queryClient.invalidateQueries();
           },
-          onSubmit: async (goal) => {
-            if (conversationId === undefined || runInFlight.current) return false;
+          onSubmit: async (goal, memory) => {
+            if (
+              conversationId === undefined ||
+              runInFlight.current ||
+              memoryCommandInFlight.current ||
+              memoryMutation.isPending
+            ) {
+              return false;
+            }
             runInFlight.current = true;
             const inputArtifactIds = selectedDatasetId ? [selectedDatasetId] : [];
             try {
@@ -592,6 +908,8 @@ export function ConversationRoute() {
                 targetConversationId: conversationId,
                 goal,
                 inputArtifactIds,
+                memoryMode: memory.mode,
+                selectedMemories: memory.refs,
               });
               return true;
             } catch {
@@ -639,6 +957,53 @@ export function ConversationRoute() {
               queryKey: queryKeys.artifactContent(artifactId),
               queryFn: () => downloadArtifact(artifactId),
               staleTime: Number.POSITIVE_INFINITY,
+            }),
+          onUpdateMemorySetting: (setting, enabled) =>
+            runMemoryCommand({
+              kind: "setting",
+              setting:
+                setting === "generateCandidates"
+                  ? "generate_candidates"
+                  : "enable_agent_tools",
+              enabled,
+            }),
+          onGrantMemoryConsentAndEnable: () =>
+            runMemoryCommand({ kind: "enable" }),
+          onDisableMemory: () => runMemoryCommand({ kind: "disable" }),
+          onRevokeMemoryConsent: () =>
+            runMemoryCommand({ kind: "revoke_consent" }),
+          onCreateMemory: (input) =>
+            runMemoryCommand({
+              kind: "create",
+              memoryKind: input.kind,
+              stableKey: input.stableKey,
+              content: input.content,
+              datasetScope: input.datasetScope,
+            }),
+          onApproveMemory: (memoryId, expectedVersion) =>
+            runMemoryCommand({
+              kind: "approve",
+              memoryId,
+              expectedVersion,
+            }),
+          onCorrectMemory: (memoryId, expectedVersion, content) =>
+            runMemoryCommand({
+              kind: "correct",
+              memoryId,
+              expectedVersion,
+              content,
+            }),
+          onForgetMemory: (memoryId, expectedVersion) =>
+            runMemoryCommand({
+              kind: "forget",
+              memoryId,
+              expectedVersion,
+            }),
+          onPurgeMemory: (memoryId, expectedVersion) =>
+            runMemoryCommand({
+              kind: "purge",
+              memoryId,
+              expectedVersion,
             }),
         }}
       />

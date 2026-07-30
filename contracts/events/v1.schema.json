@@ -1201,6 +1201,449 @@
         "title": "CapabilityStartedPayload",
         "type": "object"
       },
+      "MemoryContextInputPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "response_preference",
+              "profile_fact",
+              "project_context",
+              "scientific_observation"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "selection_reason": {
+            "enum": [
+              "default",
+              "selected",
+              "tool_search"
+            ],
+            "title": "Selection Reason",
+            "type": "string"
+          },
+          "source_kind": {
+            "enum": [
+              "explicit",
+              "proposed",
+              "corrected"
+            ],
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          },
+          "version_number": {
+            "maximum": 1000000000,
+            "minimum": 1,
+            "title": "Version Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "version_id",
+          "version_number",
+          "kind",
+          "source_kind",
+          "selection_reason"
+        ],
+        "title": "MemoryContextInputPayload",
+        "type": "object"
+      },
+      "MemoryContextLoadedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/MemoryContextLoadedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "memory.context_loaded",
+            "default": "memory.context_loaded",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "MemoryContextLoadedEvent",
+        "type": "object"
+      },
+      "MemoryContextLoadedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "content_bytes": {
+            "maximum": 262144,
+            "minimum": 0,
+            "title": "Content Bytes",
+            "type": "integer"
+          },
+          "degraded_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "memory_retrieval_unavailable",
+                  "memory_context_limit_exceeded"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Degraded Code"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/$defs/MemoryContextInputPayload"
+            },
+            "maxItems": 32,
+            "title": "Inputs",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "default",
+              "selected"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "loaded",
+              "empty",
+              "degraded"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "scope_key": {
+            "const": "local-default",
+            "default": "local-default",
+            "title": "Scope Key",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "mode",
+          "outcome",
+          "content_bytes"
+        ],
+        "title": "MemoryContextLoadedPayload",
+        "type": "object"
+      },
+      "MemoryForgetRequestedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/MemoryForgetRequestedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "memory.forget_requested",
+            "default": "memory.forget_requested",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "MemoryForgetRequestedEvent",
+        "type": "object"
+      },
+      "MemoryForgetRequestedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "memory": {
+            "$ref": "#/$defs/MemoryContextInputPayload"
+          },
+          "status": {
+            "const": "confirmation_required",
+            "title": "Status",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "memory",
+          "status"
+        ],
+        "title": "MemoryForgetRequestedPayload",
+        "type": "object"
+      },
+      "MemoryProposalCreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/MemoryProposalCreatedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "memory.proposal_created",
+            "default": "memory.proposal_created",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "MemoryProposalCreatedEvent",
+        "type": "object"
+      },
+      "MemoryProposalCreatedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "memory": {
+            "$ref": "#/$defs/MemoryContextInputPayload"
+          },
+          "status": {
+            "const": "proposed",
+            "title": "Status",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "memory",
+          "status"
+        ],
+        "title": "MemoryProposalCreatedPayload",
+        "type": "object"
+      },
+      "MemorySearchCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/$defs/MemorySearchCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "memory.search_completed",
+            "default": "memory.search_completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "MemorySearchCompletedEvent",
+        "type": "object"
+      },
+      "MemorySearchCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "inputs": {
+            "items": {
+              "$ref": "#/$defs/MemoryContextInputPayload"
+            },
+            "maxItems": 32,
+            "title": "Inputs",
+            "type": "array"
+          },
+          "outcome": {
+            "enum": [
+              "loaded",
+              "empty"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "outcome"
+        ],
+        "title": "MemorySearchCompletedPayload",
+        "type": "object"
+      },
       "MessageCompletedEvent": {
         "additionalProperties": false,
         "properties": {
@@ -3292,6 +3735,10 @@
         "capability.progress": "#/$defs/CapabilityProgressEvent",
         "capability.retrying": "#/$defs/CapabilityRetryingEvent",
         "capability.started": "#/$defs/CapabilityStartedEvent",
+        "memory.context_loaded": "#/$defs/MemoryContextLoadedEvent",
+        "memory.forget_requested": "#/$defs/MemoryForgetRequestedEvent",
+        "memory.proposal_created": "#/$defs/MemoryProposalCreatedEvent",
+        "memory.search_completed": "#/$defs/MemorySearchCompletedEvent",
         "message.completed": "#/$defs/MessageCompletedEvent",
         "review.requested": "#/$defs/ReviewRequestedEvent",
         "review.resolved": "#/$defs/ReviewResolvedEvent",
@@ -3319,6 +3766,18 @@
       },
       {
         "$ref": "#/$defs/RunStartedEvent"
+      },
+      {
+        "$ref": "#/$defs/MemoryContextLoadedEvent"
+      },
+      {
+        "$ref": "#/$defs/MemorySearchCompletedEvent"
+      },
+      {
+        "$ref": "#/$defs/MemoryProposalCreatedEvent"
+      },
+      {
+        "$ref": "#/$defs/MemoryForgetRequestedEvent"
       },
       {
         "$ref": "#/$defs/AgentTurnStartedEvent"

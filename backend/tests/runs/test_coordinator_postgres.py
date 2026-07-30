@@ -371,6 +371,7 @@ class ArtifactRoutingModel:
                                 "artifact_id": descriptor["artifact_id"],
                             },
                             "goal": "生成 marker",
+                            "acceptance_criterion": "marker_table",
                         },
                         "id": "exploratory-selected-dataset",
                         "type": "tool_call",
@@ -387,7 +388,10 @@ class ControlledExploratoryEngine:
     def invoke(self, state):
         self.initial_state = state
         workspace = Path(state["task_context"]["conversation_workspace"])
-        marker_relative = state["marker_table_path"][len("/app/data/") :]
+        output_root = state["marker_table_path"].rsplit("/", 1)[0]
+        attempt_root = f"{output_root}/attempt-00-00"
+        marker_sandbox_path = f"{attempt_root}/markers.json"
+        marker_relative = marker_sandbox_path[len("/app/data/") :]
         marker = workspace / marker_relative
         marker.parent.mkdir(parents=True)
         marker.write_text(
@@ -426,6 +430,8 @@ class ControlledExploratoryEngine:
                 },
                 "eval_record": {"status": "success"},
                 "retry_count": 0,
+                "successful_output_roots": [attempt_root],
+                "successful_marker_table_paths": [marker_sandbox_path],
             },
             "sandbox_execution_result": {"status": "success", "stderr": ""},
         }

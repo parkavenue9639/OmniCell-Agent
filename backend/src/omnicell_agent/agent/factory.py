@@ -47,8 +47,12 @@ from .capability_process import (
 )
 from .executor import AsyncCapabilityExecutor
 from .hooks import (
+    AgentHook,
     MalformedToolHistoryHook,
+    MemoryContextHook,
+    MemoryContextResolver,
     PlanBackpressureHook,
+    ScientificEvidenceCompletionHook,
     SkillMethodContextHook,
 )
 from .loop import (
@@ -58,9 +62,24 @@ from .loop import (
     ReviewResolution,
 )
 from .observer import AgentObserver, NullAgentObserver
+from .memory import AgentMemoryControlError, AgentMemoryControlPort
+from .memory_policy import (
+    FORGET_MEMORY_DESCRIPTION,
+    FORGET_MEMORY_PROMPT_HINT,
+    PROPOSE_MEMORY_DESCRIPTION,
+    PROPOSE_MEMORY_PROMPT_HINT,
+    SEARCH_MEMORY_DESCRIPTION,
+    SEARCH_MEMORY_PROMPT_HINT,
+)
 from .policy import DefaultToolPolicy, ToolPolicy, ToolPolicyOutcome
 from .response_contract import render_response_contract
 from .resource_boundary import contains_internal_resource_locator
+from .scientific_evidence import (
+    deterministic_scientific_fallback,
+    project_scientific_evidence,
+    scientific_evidence_from_state,
+    validate_scientific_final_response,
+)
 from .tooling import (
     AgentToolDefinition,
     AgentToolInvocation,
@@ -264,6 +283,39 @@ class _UpdateTaskPlanInput(BaseModel):
     evidence_tool_call_ids: list[str] = Field(default_factory=list, max_length=20)
 
 
+MemoryKindLiteral = Literal[
+    "response_preference",
+    "profile_fact",
+    "project_context",
+]
+ProposableMemoryKindLiteral = Literal[
+    "response_preference",
+    "profile_fact",
+    "project_context",
+]
+
+
+class _SearchMemoryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kinds: list[MemoryKindLiteral] = Field(default_factory=list, max_length=4)
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+class _ProposeMemoryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: ProposableMemoryKindLiteral
+    source_message_id: UUID
+
+
+class _ForgetMemoryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: UUID
+    version_id: UUID
+
+
 class _OmniCellToolComposition:
     def __init__(
         self,
@@ -274,6 +326,7 @@ class _OmniCellToolComposition:
         executor: AsyncCapabilityExecutor,
         observer: AgentObserver,
         policy: ToolPolicy,
+        memory_tools: AgentMemoryControlPort | None = None,
     ) -> None:
         self._run_id = run_id
         self._capabilities = capabilities
@@ -281,6 +334,7 @@ class _OmniCellToolComposition:
         self._executor = executor
         self._observer = observer
         self._policy = policy
+        self._memory_tools = memory_tools
 
     def _hydrate_artifact_handles(self, value: Any) -> Any:
         if isinstance(value, dict):
@@ -365,6 +419,37 @@ class _OmniCellToolComposition:
             ),
             self._finish_task,
         )
+        if self._memory_tools is not None:
+            registry.register(
+                AgentToolDefinition(
+                    name="search_memory",
+                    description=SEARCH_MEMORY_DESCRIPTION,
+                    prompt_hint=SEARCH_MEMORY_PROMPT_HINT,
+                    input_model=_SearchMemoryInput,
+                    category="control",
+                ),
+                self._search_memory,
+            )
+            registry.register(
+                AgentToolDefinition(
+                    name="propose_memory",
+                    description=PROPOSE_MEMORY_DESCRIPTION,
+                    prompt_hint=PROPOSE_MEMORY_PROMPT_HINT,
+                    input_model=_ProposeMemoryInput,
+                    category="control",
+                ),
+                self._propose_memory,
+            )
+            registry.register(
+                AgentToolDefinition(
+                    name="forget_memory",
+                    description=FORGET_MEMORY_DESCRIPTION,
+                    prompt_hint=FORGET_MEMORY_PROMPT_HINT,
+                    input_model=_ForgetMemoryInput,
+                    category="control",
+                ),
+                self._request_forget_memory,
+            )
         for spec in self._capabilities.registry.specs:
             handler = self._capabilities.registry.get(spec.name)
             registry.register(
@@ -380,6 +465,235 @@ class _OmniCellToolComposition:
                 handles_stale_skill_resources=True,
             )
         return registry
+
+    @staticmethod
+    def _memory_failure(
+        invocation: AgentToolInvocation,
+        error: AgentMemoryControlError,
+    ) -> dict[str, Any]:
+        return {
+            "messages": [
+                ToolMessage(
+                    content=render_tool_outcome(
+                        status="failed",
+                        capability=invocation.name,
+                        summary=error.summary,
+                        error_code=error.error_code,
+                        retryable=error.retryable,
+                        recovery_hint=error.recovery_hint,
+                    ),
+                    tool_call_id=invocation.tool_call_id,
+                )
+            ]
+        }
+
+    async def _search_memory(
+        self,
+        invocation: AgentToolInvocation,
+    ) -> dict[str, Any]:
+        assert self._memory_tools is not None
+        request = _SearchMemoryInput.model_validate(invocation.arguments)
+        try:
+            identities = await self._memory_tools.search(
+                kinds=tuple(request.kinds),
+                limit=request.limit,
+                tool_call_id=invocation.tool_call_id,
+            )
+        except AgentMemoryControlError as exc:
+            return self._memory_failure(invocation, exc)
+        existing = [
+            dict(item)
+            for item in invocation.state.get("loaded_memory_resources", [])
+            if isinstance(item, dict)
+        ]
+        merged: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for item in [*existing, *(dict(item) for item in identities)]:
+            identity = (
+                str(item.get("item_id") or ""),
+                str(item.get("version_id") or ""),
+            )
+            if not all(identity) or identity in seen:
+                continue
+            seen.add(identity)
+            merged.append(item)
+            if len(merged) >= 32:
+                break
+        public_identities = [
+            {
+                key: item[key]
+                for key in (
+                    "item_id",
+                    "version_id",
+                    "version_number",
+                    "content_sha256",
+                    "kind",
+                    "source_kind",
+                    "selection_reason",
+                )
+                if key in item
+            }
+            for item in identities
+        ]
+        await self._observer.emit(
+            "memory.search_completed",
+            {
+                "tool_call_id": invocation.tool_call_id,
+                "outcome": "loaded" if public_identities else "empty",
+                "inputs": [
+                    {
+                        key: item[key]
+                        for key in (
+                            "item_id",
+                            "version_id",
+                            "version_number",
+                            "kind",
+                            "source_kind",
+                            "selection_reason",
+                        )
+                    }
+                    for item in public_identities
+                ],
+            },
+            dedupe_key=(
+                f"memory:search-completed:{invocation.tool_call_id}"
+            ),
+        )
+        return {
+            "messages": [
+                ToolMessage(
+                    content=render_tool_outcome(
+                        status="completed",
+                        capability="search_memory",
+                        summary=(
+                            f"找到 {len(public_identities)} 条可用记忆 identity；"
+                            "正文将在下一轮由 backend 瞬时解析。"
+                        ),
+                        result={"memories": public_identities},
+                    ),
+                    tool_call_id=invocation.tool_call_id,
+                )
+            ],
+            "loaded_memory_resources": merged,
+        }
+
+    async def _propose_memory(
+        self,
+        invocation: AgentToolInvocation,
+    ) -> dict[str, Any]:
+        assert self._memory_tools is not None
+        request = _ProposeMemoryInput.model_validate(invocation.arguments)
+        try:
+            identity = await self._memory_tools.propose(
+                kind=request.kind,
+                source_message_id=request.source_message_id,
+                tool_call_id=invocation.tool_call_id,
+            )
+        except AgentMemoryControlError as exc:
+            return self._memory_failure(invocation, exc)
+        await self._observer.emit(
+            "memory.proposal_created",
+            {
+                "tool_call_id": invocation.tool_call_id,
+                "memory": {
+                    key: identity[key]
+                    for key in (
+                        "item_id",
+                        "version_id",
+                        "version_number",
+                        "kind",
+                        "source_kind",
+                        "selection_reason",
+                    )
+                    if key in identity
+                },
+                "status": "proposed",
+            },
+            dedupe_key=f"memory:proposal-created:{invocation.tool_call_id}",
+        )
+        return {
+            "messages": [
+                ToolMessage(
+                    content=render_tool_outcome(
+                        status="completed",
+                        capability="propose_memory",
+                        summary="已创建待用户确认的记忆提议。",
+                        result={
+                            key: identity[key]
+                            for key in (
+                                "item_id",
+                                "version_id",
+                                "version_number",
+                                "content_sha256",
+                                "kind",
+                                "status",
+                            )
+                            if key in identity
+                        },
+                    ),
+                    tool_call_id=invocation.tool_call_id,
+                )
+            ]
+        }
+
+    async def _request_forget_memory(
+        self,
+        invocation: AgentToolInvocation,
+    ) -> dict[str, Any]:
+        assert self._memory_tools is not None
+        request = _ForgetMemoryInput.model_validate(invocation.arguments)
+        try:
+            intent = await self._memory_tools.request_forget(
+                item_id=request.item_id,
+                version_id=request.version_id,
+                tool_call_id=invocation.tool_call_id,
+            )
+        except AgentMemoryControlError as exc:
+            return self._memory_failure(invocation, exc)
+        await self._observer.emit(
+            "memory.forget_requested",
+            {
+                "tool_call_id": invocation.tool_call_id,
+                "memory": {
+                    key: intent[key]
+                    for key in (
+                        "item_id",
+                        "version_id",
+                        "version_number",
+                        "kind",
+                        "source_kind",
+                        "selection_reason",
+                    )
+                    if key in intent
+                },
+                "status": "confirmation_required",
+            },
+            dedupe_key=f"memory:forget-requested:{invocation.tool_call_id}",
+        )
+        return {
+            "messages": [
+                ToolMessage(
+                    content=render_tool_outcome(
+                        status="completed",
+                        capability="forget_memory",
+                        summary=(
+                            "已验证目标记忆；必须由用户在记忆管理界面确认 "
+                            "revoke 或 purge，当前 Tool 不执行删除。"
+                        ),
+                        result={
+                            key: intent[key]
+                            for key in (
+                                "item_id",
+                                "version_id",
+                                "status",
+                            )
+                            if key in intent
+                        },
+                    ),
+                    tool_call_id=invocation.tool_call_id,
+                )
+            ]
+        }
 
     def _skill_body_is_current(
         self,
@@ -920,8 +1234,14 @@ class _OmniCellToolComposition:
             incomplete = [
                 tool_call_id
                 for tool_call_id in update.evidence_tool_call_ids
-                if tool_evidence.get(tool_call_id, {}).get("result_status")
-                != CapabilityStatus.COMPLETED.value
+                if (
+                    tool_evidence.get(tool_call_id, {}).get("result_status")
+                    != CapabilityStatus.COMPLETED.value
+                    or tool_evidence.get(tool_call_id, {}).get(
+                        "scientific_goal_status"
+                    )
+                    in {"partial", "unverified"}
+                )
             ]
             if current_status != TaskStatus.IN_PROGRESS.value:
                 return _plan_transition_rejected(
@@ -1066,6 +1386,11 @@ class _OmniCellToolComposition:
         evidence_entry = dict(
             tool_evidence.get(invocation.tool_call_id, {})
         )
+        if evidence_entry.get("scientific_goal_status") in {
+            "partial",
+            "unverified",
+        }:
+            return {}, None
         bound_task_id = str(evidence_entry.get("plan_task_id") or "")
         if bound_task_id and bound_task_id != active_task_id:
             return {}, None
@@ -1194,11 +1519,30 @@ class _OmniCellToolComposition:
                     )
                 ]
             }
+        scientific_evidence = scientific_evidence_from_state(
+            invocation.state
+        )
+        scientific_failures = validate_scientific_final_response(
+            finished.final_response,
+            scientific_evidence,
+            declared_artifact_ids=[
+                str(item)
+                for item in finished.evidence_artifact_ids
+            ],
+        )
+        final_response = (
+            deterministic_scientific_fallback(
+                scientific_evidence,
+                scientific_failures,
+            )
+            if scientific_evidence
+            else finished.final_response
+        )
         await self._observer.emit(
             "message.completed",
             {
                 "role": "assistant",
-                "content": finished.final_response,
+                "content": final_response,
                 "has_tool_calls": False,
                 "turn": int(invocation.state.get("turn_count", 0)),
             },
@@ -1224,7 +1568,7 @@ class _OmniCellToolComposition:
             ],
             "task_status": TaskStatus.COMPLETED.value,
             "outcome_status": "completed",
-            "final_response": finished.final_response,
+            "final_response": final_response,
         }
 
     async def _invoke_domain_tool(
@@ -1482,6 +1826,17 @@ class _OmniCellToolComposition:
                 failure_counts=failure_counts,
             )
         failure_counts.pop(fingerprint, None)
+        scientific_evidence = project_scientific_evidence(
+            invocation.name,
+            result_payload,
+            evidence_artifacts,
+        )
+        result_manifest = result_payload.get("result_manifest")
+        scientific_goal_status = (
+            str(result_manifest.get("scientific_goal_status") or "")
+            if isinstance(result_manifest, dict)
+            else ""
+        )
         evidence[invocation.tool_call_id] = {
             "capability": invocation.name,
             "input_digest": fingerprint,
@@ -1496,6 +1851,16 @@ class _OmniCellToolComposition:
                 ).encode("utf-8")
             ).hexdigest(),
             "plan_task_id": None,
+            **(
+                {"scientific_evidence": scientific_evidence}
+                if scientific_evidence is not None
+                else {}
+            ),
+            **(
+                {"scientific_goal_status": scientific_goal_status}
+                if scientific_goal_status
+                else {}
+            ),
         }
         plan_updates, reconciled_task_id = (
             await self._reconcile_active_plan_step(
@@ -1507,10 +1872,26 @@ class _OmniCellToolComposition:
             status="completed",
             capability=invocation.name,
             summary=(
-                "能力执行完成，结果已经过类型契约校验；"
-                "当前活动计划步骤已自动完成。"
+                (
+                    (
+                        "能力执行完成，但探索性科学目标尚未完全验证；"
+                        if scientific_goal_status in {"partial", "unverified"}
+                        else "能力执行完成，科学后置条件已验证；"
+                    )
+                    if scientific_evidence is not None
+                    else "能力执行完成，结果已经过类型契约校验；"
+                )
+                + "当前活动计划步骤已自动完成。"
                 if reconciled_task_id
-                else "能力执行完成，结果已经过类型契约校验。"
+                else (
+                    (
+                        "能力执行完成，但探索性科学目标尚未完全验证。"
+                        if scientific_goal_status in {"partial", "unverified"}
+                        else "能力执行完成，科学后置条件已验证。"
+                    )
+                    if scientific_evidence is not None
+                    else "能力执行完成，结果已经过类型契约校验。"
+                )
             ),
             result=_model_visible_result(result_payload),
             evidence_artifact_ids=evidence_artifacts,
@@ -1646,6 +2027,8 @@ class AgentLoopFactory:
         capability_context: CapabilityContext,
         checkpointer: Any,
         input_artifacts: tuple[ArtifactRef, ...] = (),
+        memory_resolver: MemoryContextResolver | None = None,
+        memory_tools: AgentMemoryControlPort | None = None,
         cancellation: CancellationToken | None = None,
         observer: AgentObserver | None = None,
     ) -> AgentExecution:
@@ -1678,6 +2061,7 @@ class AgentLoopFactory:
             executor=executor,
             observer=active_observer,
             policy=self._policy,
+            memory_tools=memory_tools,
         ).build()
         artifact_context = _render_input_artifacts(input_artifacts)
         context_messages = (
@@ -1685,6 +2069,17 @@ class AgentLoopFactory:
             if artifact_context
             else ()
         )
+        hooks: list[AgentHook] = [
+            MalformedToolHistoryHook(),
+            *(
+                [MemoryContextHook(memory_resolver)]
+                if memory_resolver is not None
+                else []
+            ),
+            SkillMethodContextHook(self._capabilities.skills),
+            ScientificEvidenceCompletionHook(),
+            PlanBackpressureHook(),
+        ]
         return AgentExecution(
             run_id=run_id,
             conversation_id=conversation_id,
@@ -1699,11 +2094,7 @@ class AgentLoopFactory:
             cancellation=active_cancellation,
             observer=active_observer,
             config=self._config,
-            hooks=(
-                MalformedToolHistoryHook(),
-                SkillMethodContextHook(self._capabilities.skills),
-                PlanBackpressureHook(),
-            ),
+            hooks=tuple(hooks),
             clock=self._clock,
             fatal_tool_errors=(RuntimeCleanupError,),
         )

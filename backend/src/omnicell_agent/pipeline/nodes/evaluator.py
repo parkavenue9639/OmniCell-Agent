@@ -59,6 +59,12 @@ def run_evaluator(state: ExploratoryAnalysisState) -> dict:
     logger.info("--- NODE: EVALUATOR ---")
     sandbox_result = state.get("sandbox_execution_result", {})
     task_context = state.get("task_context", {})
+    attempt_output_root = str(
+        sandbox_result.get("attempt_output_root") or ""
+    )
+    attempt_marker_table_path = str(
+        sandbox_result.get("attempt_marker_table_path") or ""
+    )
 
     # 1. 代码执行层拦截 (沙盒层错误)
     if sandbox_result.get("status") == "error":
@@ -75,6 +81,11 @@ def run_evaluator(state: ExploratoryAnalysisState) -> dict:
             "feedback": feedback_msg
         })
         task_context["failed_attempts"] = failed_attempts
+        if attempt_output_root:
+            failed_roots = list(task_context.get("failed_output_roots") or [])
+            if attempt_output_root not in failed_roots:
+                failed_roots.append(attempt_output_root)
+            task_context["failed_output_roots"] = failed_roots
         task_context["eval_record"] = {"status": "error", "feedback": feedback_msg}
         
         return {"task_context": task_context}
@@ -165,7 +176,26 @@ def run_evaluator(state: ExploratoryAnalysisState) -> dict:
         eval_record["feedback"] = ""  # 清空可能的历史毒药反馈
         task_context["retry_count"] = 0
         task_context["failed_attempts"] = [] # 清理历史尝试档案，一身轻地步入下一步
+        if attempt_output_root:
+            successful_roots = list(
+                task_context.get("successful_output_roots") or []
+            )
+            if attempt_output_root not in successful_roots:
+                successful_roots.append(attempt_output_root)
+            task_context["successful_output_roots"] = successful_roots
+        if attempt_marker_table_path:
+            marker_paths = list(
+                task_context.get("successful_marker_table_paths") or []
+            )
+            if attempt_marker_table_path not in marker_paths:
+                marker_paths.append(attempt_marker_table_path)
+            task_context["successful_marker_table_paths"] = marker_paths
         current_index = state.get("current_step_index", 0) + 1
         return {"task_context": task_context, "current_step_index": current_index}
     else:
+        if attempt_output_root:
+            failed_roots = list(task_context.get("failed_output_roots") or [])
+            if attempt_output_root not in failed_roots:
+                failed_roots.append(attempt_output_root)
+            task_context["failed_output_roots"] = failed_roots
         return {"task_context": task_context}

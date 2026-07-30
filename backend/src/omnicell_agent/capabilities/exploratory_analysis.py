@@ -31,6 +31,7 @@ from .contracts import (
     ExploratoryAnalysisResult,
 )
 from .errors import CapabilityExecutionError
+from .exploratory_evidence import build_exploratory_result_manifest
 from .registry import CapabilityContext
 
 
@@ -195,20 +196,50 @@ class ExploratoryAnalysisCapability:
         if not completed and retries < MAX_RETRIES:
             raise RuntimeError("探索性分析在未达到完成或熔断条件时结束")
 
-        marker_path = context.artifacts.workspace / marker_relative
         marker_ref = None
-        marker_contract = None
+        marker_contract: MarkerTableContract | None = None
+        marker_contracts: dict[str, MarkerTableContract] = {}
+        successful_roots = [
+            str(item)
+            for item in task_context.get("successful_output_roots", [])
+        ]
+        allowed_prefixes: list[str] = []
+        for root in successful_roots:
+            if (
+                not root.startswith(f"{output_sandbox_root}/attempt-")
+                or ".." in root.split("/")
+            ):
+                raise CapabilityExecutionError(
+                    "探索性分析成功输出目录不属于当前 invocation"
+                )
+            relative = root.removeprefix("/app/data/")
+            if relative not in allowed_prefixes:
+                allowed_prefixes.append(relative)
         # 先完成 invocation 输出树的最终边界/配额扫描及安全发布。marker
         # 不能在这条边界之前通过普通路径 API 被跟随或解析。
         produced = context.artifacts.publish_new_files(
             before,
             within_output_scope=context.artifacts.output_scope is not None,
+            allowed_relative_prefixes=tuple(allowed_prefixes),
         )
-        marker_uri = f"workspace://{marker_relative}"
-        if any(ref.uri == marker_uri for ref in produced):
+        successful_marker_uris = {
+            f"workspace://{str(path).removeprefix('/app/data/')}"
+            for path in task_context.get("successful_marker_table_paths", [])
+            if str(path).startswith(f"{output_sandbox_root}/attempt-")
+        }
+        marker_candidates = [
+            ref for ref in produced if ref.uri in successful_marker_uris
+        ]
+        if len(marker_candidates) > 1:
+            raise CapabilityExecutionError(
+                "探索性分析生成了多个 marker table，结果来源不唯一"
+            )
+        if marker_candidates:
+            candidate = marker_candidates[0]
             try:
                 candidate_marker_ref = context.artifacts.publish(
-                    marker_path,
+                    context.artifacts.workspace
+                    / candidate.uri.removeprefix("workspace://"),
                     kind="marker_table",
                     media_type="application/json",
                 )
@@ -223,16 +254,28 @@ class ExploratoryAnalysisCapability:
                 ) from exc
             else:
                 marker_ref = candidate_marker_ref
-        if marker_contract is not None and not marker_contract.markers:
+                marker_contracts[str(marker_ref.artifact_id)] = marker_contract
+        if (
+            marker_ref is not None
+            and marker_contract is not None
+            and not marker_contract.markers
+        ):
             raise CapabilityExecutionError(
                 "探索性分析生成的 marker contract 为空"
             )
 
-        if marker_contract is not None:
+        if marker_ref is not None:
             assert marker_ref is not None
             produced = [ref for ref in produced if ref.uri != marker_ref.uri]
             produced.append(marker_ref)
 
+        result_manifest = build_exploratory_result_manifest(
+            context.artifacts,
+            produced,
+            marker_contracts=marker_contracts,
+            source_dataset=typed.dataset,
+            acceptance_criterion=typed.acceptance_criterion,
+        )
         diagnostic = str(
             eval_record.get("feedback")
             or (final_state.get("sandbox_execution_result") or {}).get("stderr")
@@ -244,6 +287,7 @@ class ExploratoryAnalysisCapability:
             steps=steps,
             artifacts=produced,
             marker_table=marker_ref,
+            result_manifest=result_manifest,
             diagnostic_summary=diagnostic[:2_000] or None,
         )
 

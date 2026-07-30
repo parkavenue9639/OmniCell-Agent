@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">OmniCell-Agent 图标</title>
+  <desc id="description">由细胞膜环、中央细胞核和协作节点组成的抽象图标，表达单细胞分析与 Agent 编排。</desc>
+
+  <rect x="64" y="64" width="896" height="896" rx="224" fill="#071426"/>
+  <circle cx="512" cy="512" r="336" fill="#0B1E35"/>
+
+  <circle
+    cx="512"
+    cy="512"
+    r="272"
+    fill="none"
+    stroke="#183654"
+    stroke-width="96"
+  />
+  <circle
+    cx="512"
+    cy="512"
+    r="272"
+    fill="none"
+    stroke="#2DD4BF"
+    stroke-width="70"
+    stroke-linecap="round"
+    stroke-dasharray="410 145 335 145 410 264"
+    transform="rotate(-20 512 512)"
+  />
+
+  <circle cx="512" cy="512" r="156" fill="#182B4A"/>
+  <circle cx="512" cy="512" r="132" fill="#8B5CF6"/>
+
+  <path
+    d="M512 512V438M512 512L448 558M512 512L576 558"
+    fill="none"
+    stroke="#EDE9FE"
+    stroke-width="28"
+    stroke-linecap="round"
+  />
+  <circle cx="512" cy="438" r="29" fill="#F8FAFC"/>
+  <circle cx="448" cy="558" r="29" fill="#F8FAFC"/>
+  <circle cx="576" cy="558" r="29" fill="#F8FAFC"/>
+  <circle cx="512" cy="512" r="34" fill="#2DD4BF"/>
+
+  <circle cx="735" cy="326" r="37" fill="#F8FAFC" stroke="#071426" stroke-width="18"/>
+  <circle cx="759" cy="681" r="37" fill="#F8FAFC" stroke="#071426" stroke-width="18"/>
+  <circle cx="250" cy="522" r="37" fill="#F8FAFC" stroke="#071426" stroke-width="18"/>
+</svg>

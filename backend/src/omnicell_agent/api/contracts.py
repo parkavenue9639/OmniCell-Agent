@@ -11,8 +11,16 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
+from omnicell_agent.memory.types import MEMORY_PROVIDER_CONSENT_VERSION
 from omnicell_agent.runs.events import DecimalCursor, PersistedEvent
 from omnicell_agent.runs.status import ReviewDecision, ReviewStatus, RunStatus
 
@@ -85,10 +93,60 @@ class ConversationListResponse(VersionedApiModel):
     page: PageInfo
 
 
+class MemoryKind(StrEnum):
+    RESPONSE_PREFERENCE = "response_preference"
+    PROFILE_FACT = "profile_fact"
+    PROJECT_CONTEXT = "project_context"
+    SCIENTIFIC_OBSERVATION = "scientific_observation"
+
+
+class MemoryStatus(StrEnum):
+    PROPOSED = "proposed"
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    PURGED = "purged"
+
+
+class MemoryRunMode(StrEnum):
+    OFF = "off"
+    DEFAULT = "default"
+    SELECTED = "selected"
+
+
+class MemorySourceKind(StrEnum):
+    EXPLICIT = "explicit"
+    PROPOSED = "proposed"
+    CORRECTED = "corrected"
+
+
+class MemorySelectionRef(ApiModel):
+    item_id: UUID
+    version_id: UUID
+
+
 class RunCreateRequest(ApiModel):
     goal: str = Field(min_length=1, max_length=20_000)
     input_artifact_ids: BoundedIdList = Field(default_factory=list)
     request_key: str | None = Field(default=None, min_length=1, max_length=255)
+    memory_mode: MemoryRunMode = MemoryRunMode.OFF
+    selected_memories: list[MemorySelectionRef] = Field(
+        default_factory=list,
+        max_length=32,
+    )
+
+    @model_validator(mode="after")
+    def _selected_memory_matches_mode(self) -> "RunCreateRequest":
+        if self.memory_mode is MemoryRunMode.SELECTED:
+            if not self.selected_memories:
+                raise ValueError("selected memory mode 必须包含至少一个精确版本引用")
+        elif self.selected_memories:
+            raise ValueError("只有 selected memory mode 可以携带 selected_memories")
+        identities = {
+            (item.item_id, item.version_id) for item in self.selected_memories
+        }
+        if len(identities) != len(self.selected_memories):
+            raise ValueError("selected_memories 不允许重复")
+        return self
 
 
 class RunRead(VersionedApiModel):
@@ -263,6 +321,171 @@ class ArtifactListResponse(VersionedApiModel):
     page: PageInfo
 
 
+class MemorySettingsRead(VersionedApiModel):
+    scope_key: Literal["local-default"] = "local-default"
+    use_memory: bool
+    generate_candidates: bool
+    enable_agent_tools: bool
+    provider_consent_granted: bool
+    provider_consent_version: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+    )
+    provider_consented_at: AwareDatetime | None = None
+    updated_at: AwareDatetime
+
+
+class MemorySettingsUpdateRequest(ApiModel):
+    use_memory: bool | None = None
+    generate_candidates: bool | None = None
+    enable_agent_tools: bool | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one_setting(self) -> "MemorySettingsUpdateRequest":
+        if (
+            self.use_memory is None
+            and self.generate_candidates is None
+            and self.enable_agent_tools is None
+        ):
+            raise ValueError("至少需要更新一个 memory setting")
+        return self
+
+
+class MemoryProviderConsentRequest(ApiModel):
+    decision: Literal["grant", "revoke"]
+    statement_version: Literal[MEMORY_PROVIDER_CONSENT_VERSION]
+    confirmed: Literal[True]
+
+
+class MemorySourceRead(ApiModel):
+    source_kind: MemorySourceKind
+    conversation_id: UUID | None = None
+    run_id: UUID | None = None
+    message_ids: list[UUID] = Field(default_factory=list, max_length=32)
+
+
+class MemoryCreateRequest(ApiModel):
+    kind: MemoryKind
+    stable_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+    )
+    content: str = Field(min_length=1, max_length=8_000)
+    dataset_scope: dict[str, str] | None = Field(
+        default=None,
+        max_length=16,
+    )
+    source_conversation_id: UUID | None = None
+    source_run_id: UUID | None = None
+    source_message_ids: list[UUID] = Field(default_factory=list, max_length=32)
+    expires_at: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def _scientific_memory_is_scoped(self) -> "MemoryCreateRequest":
+        source_complete = bool(
+            self.source_conversation_id
+            and self.source_run_id
+            and self.source_message_ids
+        )
+        source_partial = bool(
+            self.source_conversation_id
+            or self.source_run_id
+            or self.source_message_ids
+        )
+        if source_partial and not source_complete:
+            raise ValueError("memory source identity 必须完整提供")
+        if self.kind is MemoryKind.SCIENTIFIC_OBSERVATION:
+            if not self.dataset_scope or "artifact_id" not in self.dataset_scope:
+                raise ValueError(
+                    "scientific_observation 必须包含 artifact_id dataset scope"
+                )
+            if not source_complete:
+                raise ValueError(
+                    "scientific_observation 必须包含完整的 conversation/run/message 来源"
+                )
+        return self
+
+
+class MemoryRead(VersionedApiModel):
+    memory_id: UUID
+    scope_key: Literal["local-default"] = "local-default"
+    stable_key: str
+    kind: MemoryKind
+    status: MemoryStatus
+    current_version: int | None = Field(default=None, ge=1)
+    version_id: UUID | None = None
+    content_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    content: str | None = Field(default=None, max_length=8_000)
+    dataset_scope: dict[str, str] | None = Field(
+        default=None,
+        max_length=16,
+    )
+    source: MemorySourceRead | None = None
+    expires_at: AwareDatetime | None = None
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+
+
+class MemoryListResponse(VersionedApiModel):
+    items: list[MemoryRead] = Field(max_length=100)
+    page: PageInfo
+
+
+class MemoryApproveRequest(ApiModel):
+    expected_version: int = Field(ge=1, le=1_000_000_000)
+
+
+class MemoryCorrectRequest(ApiModel):
+    expected_version: int = Field(ge=1, le=1_000_000_000)
+    content: str = Field(min_length=1, max_length=8_000)
+    dataset_scope: dict[str, str] | None = Field(
+        default=None,
+        max_length=16,
+    )
+    source_message_ids: list[UUID] = Field(default_factory=list, max_length=32)
+
+
+class MemoryForgetRequest(ApiModel):
+    expected_version: int = Field(ge=1, le=1_000_000_000)
+    confirmed: Literal[True]
+
+
+class MemoryPurgeRequest(ApiModel):
+    expected_version: int = Field(ge=1, le=1_000_000_000)
+    confirmed: Literal[True]
+
+
+class MemoryCommandResponse(VersionedApiModel):
+    memory: MemoryRead
+
+
+class RunMemoryInputRead(ApiModel):
+    item_id: UUID
+    version_id: UUID
+    version_number: int = Field(ge=1, le=1_000_000_000)
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    kind: MemoryKind
+    source_kind: MemorySourceKind
+    selection_reason: Literal["default", "selected", "tool_search"]
+
+
+class RunMemoryContextRead(VersionedApiModel):
+    run_id: UUID
+    snapshot_id: UUID | None = None
+    scope_key: Literal["local-default"] = "local-default"
+    mode: MemoryRunMode
+    outcome: Literal["off", "pending", "loaded", "empty", "degraded"]
+    inputs: list[RunMemoryInputRead] = Field(default_factory=list, max_length=32)
+    degraded_code: str | None = Field(default=None, max_length=128)
+    created_at: AwareDatetime | None = None
+
+
 class ErrorDetail(ApiModel):
     code: str = Field(min_length=1, max_length=128)
     message: str = Field(min_length=1, max_length=2_000)
@@ -300,6 +523,23 @@ __all__ = [
     "HealthComponentsRead",
     "HealthComponentStatus",
     "LivenessResponse",
+    "MemoryApproveRequest",
+    "MemoryCommandResponse",
+    "MemoryCorrectRequest",
+    "MemoryCreateRequest",
+    "MemoryForgetRequest",
+    "MemoryKind",
+    "MemoryListResponse",
+    "MemoryProviderConsentRequest",
+    "MemoryPurgeRequest",
+    "MemoryRead",
+    "MemoryRunMode",
+    "MemorySelectionRef",
+    "MemorySettingsRead",
+    "MemorySettingsUpdateRequest",
+    "MemorySourceKind",
+    "MemorySourceRead",
+    "MemoryStatus",
     "PageInfo",
     "ReadinessResponse",
     "ReviewDecisionRequest",
@@ -313,6 +553,8 @@ __all__ = [
     "RunCreateResponse",
     "RunHistoryRequest",
     "RunHistoryResponse",
+    "RunMemoryContextRead",
+    "RunMemoryInputRead",
     "RunRead",
     "RunResumeRequest",
     "RunResumeResponse",

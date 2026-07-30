@@ -70,6 +70,10 @@ DecimalCursor: TypeAlias = Annotated[
 class EventType(StrEnum):
     RUN_CREATED = "run.created"
     RUN_STARTED = "run.started"
+    MEMORY_CONTEXT_LOADED = "memory.context_loaded"
+    MEMORY_SEARCH_COMPLETED = "memory.search_completed"
+    MEMORY_PROPOSAL_CREATED = "memory.proposal_created"
+    MEMORY_FORGET_REQUESTED = "memory.forget_requested"
     AGENT_TURN_STARTED = "agent.turn_started"
     AGENT_TOOL_STARTED = "agent.tool_started"
     AGENT_TOOL_COMPLETED = "agent.tool_completed"
@@ -141,6 +145,81 @@ class RunCreatedPayload(EventPayload):
 
 class RunStartedPayload(EventPayload):
     status: Literal[RunStatus.RUNNING] = RunStatus.RUNNING
+
+
+class MemoryContextInputPayload(EventPayload):
+    item_id: UUID
+    version_id: UUID
+    version_number: int = Field(ge=1, le=1_000_000_000)
+    kind: Literal[
+        "response_preference",
+        "profile_fact",
+        "project_context",
+        "scientific_observation",
+    ]
+    source_kind: Literal["explicit", "proposed", "corrected"]
+    selection_reason: Literal["default", "selected", "tool_search"]
+
+
+class MemoryContextLoadedPayload(EventPayload):
+    snapshot_id: UUID
+    scope_key: Literal["local-default"] = "local-default"
+    mode: Literal["default", "selected"]
+    outcome: Literal["loaded", "empty", "degraded"]
+    inputs: list[MemoryContextInputPayload] = Field(
+        default_factory=list,
+        max_length=32,
+    )
+    content_bytes: int = Field(ge=0, le=256 * 1024)
+    degraded_code: Literal[
+        "memory_retrieval_unavailable",
+        "memory_context_limit_exceeded",
+    ] | None = None
+
+    @model_validator(mode="after")
+    def _outcome_matches_inputs(self) -> "MemoryContextLoadedPayload":
+        if self.outcome == "loaded" and not self.inputs:
+            raise ValueError("loaded memory context 必须包含 input identity")
+        if self.outcome in {"empty", "degraded"} and self.inputs:
+            raise ValueError("非 loaded memory context 不得包含 input identity")
+        if self.outcome == "degraded" and self.degraded_code is None:
+            raise ValueError("degraded memory context 必须包含 degraded_code")
+        if self.outcome != "degraded" and self.degraded_code is not None:
+            raise ValueError("只有 degraded memory context 可以包含 degraded_code")
+        if self.outcome in {"empty", "degraded"} and self.content_bytes != 0:
+            raise ValueError("非 loaded memory context 的 content_bytes 必须为 0")
+        return self
+
+
+class MemorySearchCompletedPayload(EventPayload):
+    tool_call_id: str = Field(min_length=1, max_length=255)
+    outcome: Literal["loaded", "empty"]
+    inputs: list[MemoryContextInputPayload] = Field(
+        default_factory=list,
+        max_length=32,
+    )
+
+    @model_validator(mode="after")
+    def _outcome_matches_inputs(self) -> "MemorySearchCompletedPayload":
+        if self.outcome == "loaded" and not self.inputs:
+            raise ValueError("loaded memory extension 必须包含 input identity")
+        if self.outcome == "empty" and self.inputs:
+            raise ValueError("empty memory extension 不得包含 input identity")
+        if any(item.selection_reason != "tool_search" for item in self.inputs):
+            raise ValueError("memory extension 只能记录 tool_search identity")
+        return self
+
+
+class MemoryProposalCreatedPayload(EventPayload):
+    tool_call_id: str = Field(min_length=1, max_length=255)
+    memory: MemoryContextInputPayload
+    status: Literal["proposed"]
+
+
+class MemoryForgetRequestedPayload(EventPayload):
+    tool_call_id: str = Field(min_length=1, max_length=255)
+    memory: MemoryContextInputPayload
+    status: Literal["confirmation_required"]
 
 
 class AgentTurnStartedPayload(EventPayload):
@@ -541,6 +620,34 @@ class RunStartedEvent(PersistedEventEnvelope):
     payload: RunStartedPayload
 
 
+class MemoryContextLoadedEvent(PersistedEventEnvelope):
+    type: Literal[EventType.MEMORY_CONTEXT_LOADED] = (
+        EventType.MEMORY_CONTEXT_LOADED
+    )
+    payload: MemoryContextLoadedPayload
+
+
+class MemorySearchCompletedEvent(PersistedEventEnvelope):
+    type: Literal[EventType.MEMORY_SEARCH_COMPLETED] = (
+        EventType.MEMORY_SEARCH_COMPLETED
+    )
+    payload: MemorySearchCompletedPayload
+
+
+class MemoryProposalCreatedEvent(PersistedEventEnvelope):
+    type: Literal[EventType.MEMORY_PROPOSAL_CREATED] = (
+        EventType.MEMORY_PROPOSAL_CREATED
+    )
+    payload: MemoryProposalCreatedPayload
+
+
+class MemoryForgetRequestedEvent(PersistedEventEnvelope):
+    type: Literal[EventType.MEMORY_FORGET_REQUESTED] = (
+        EventType.MEMORY_FORGET_REQUESTED
+    )
+    payload: MemoryForgetRequestedPayload
+
+
 class AgentTurnStartedEvent(PersistedEventEnvelope):
     type: Literal[EventType.AGENT_TURN_STARTED] = EventType.AGENT_TURN_STARTED
     payload: AgentTurnStartedPayload
@@ -679,6 +786,10 @@ class RunCancelledEvent(PersistedEventEnvelope):
 PersistedEvent: TypeAlias = Annotated[
     RunCreatedEvent
     | RunStartedEvent
+    | MemoryContextLoadedEvent
+    | MemorySearchCompletedEvent
+    | MemoryProposalCreatedEvent
+    | MemoryForgetRequestedEvent
     | AgentTurnStartedEvent
     | AgentToolStartedEvent
     | AgentToolCompletedEvent
@@ -777,6 +888,15 @@ __all__ = [
     "MessageCompletedEvent",
     "MessageCompletedPayload",
     "MessageRole",
+    "MemoryContextInputPayload",
+    "MemoryContextLoadedEvent",
+    "MemoryContextLoadedPayload",
+    "MemorySearchCompletedEvent",
+    "MemorySearchCompletedPayload",
+    "MemoryForgetRequestedEvent",
+    "MemoryForgetRequestedPayload",
+    "MemoryProposalCreatedEvent",
+    "MemoryProposalCreatedPayload",
     "PERSISTED_EVENT_ADAPTER",
     "PersistedEvent",
     "PersistedEventEnvelope",

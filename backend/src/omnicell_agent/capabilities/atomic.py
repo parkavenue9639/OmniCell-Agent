@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +22,7 @@ from omnicell_agent.schema.contract import MarkerTableContract
 from .contracts import (
     ArtifactRef,
     AtomicAnalysisResult,
+    AtomicScientificEvidence,
     CapabilityEffect,
     CapabilityMode,
     CapabilityRequest,
@@ -52,8 +54,9 @@ class AtomicToolBinding:
     preconditions: tuple[str, ...]
     recipe_id: str
     mode: AtomicMode
-    dataset_state_updates: tuple[str, ...] = ()
     required_features: tuple[Literal["pca", "leiden"], ...] = ()
+    requires_log_expression: bool = False
+    random_seed: int | None = None
 
     def __post_init__(self) -> None:
         if self.tool_name == self.recipe_id:
@@ -75,14 +78,14 @@ _ATOMIC_TOOL_BINDINGS = (
         preconditions=("输入是可读取的单细胞 dataset",),
         recipe_id="qc_and_filter",
         mode="transform",
-        dataset_state_updates=("quality_controlled",),
     ),
     AtomicToolBinding(
         tool_name="normalize_expression",
         description="执行总量归一化与 log1p 变换，并生成新的单细胞数据集。",
         prompt_hint=(
             "仅在用户明确要求归一化或 log1p 变换时调用；不要为概念问答调用，"
-            "也不要把归一化描述为批次校正；实现会拒绝重复归一化，"
+            "也不要把归一化描述为批次校正；实现会识别并明确报告已存在的 log1p 空间，"
+            "不会静默重复变换，"
             "结果中的 output_dataset 是后续步骤的新输入。"
         ),
         request_model=NormalizeExpressionRequest,
@@ -91,7 +94,6 @@ _ATOMIC_TOOL_BINDINGS = (
         preconditions=("输入是可读取的单细胞 dataset",),
         recipe_id="normalize_log",
         mode="transform",
-        dataset_state_updates=("normalized_log1p",),
     ),
     AtomicToolBinding(
         tool_name="cluster_cells",
@@ -107,7 +109,8 @@ _ATOMIC_TOOL_BINDINGS = (
         preconditions=("表达矩阵已经完成归一化和 log1p 变换",),
         recipe_id="pca_clustering",
         mode="transform",
-        dataset_state_updates=("pca", "neighbors", "leiden_clusters"),
+        requires_log_expression=True,
+        random_seed=0,
     ),
     AtomicToolBinding(
         tool_name="find_marker_genes",
@@ -125,6 +128,7 @@ _ATOMIC_TOOL_BINDINGS = (
         recipe_id="marker_genes_extractor",
         mode="extract",
         required_features=("leiden",),
+        requires_log_expression=True,
     ),
     AtomicToolBinding(
         tool_name="plot_pca_clusters",
@@ -212,6 +216,7 @@ class AtomicAnalysisCapability:
             raw_data_path=raw_data_path,
             sandbox_root=sandbox_root,
             parameters=parameters,
+            source_artifact_id=str(typed.dataset.artifact_id),
         )
 
         with self._scope_factory(context.artifacts.workspace) as session:
@@ -241,19 +246,9 @@ class AtomicAnalysisCapability:
             raise CapabilityExecutionError(
                 f"{self._binding.tool_name} 未产出受验证的 summary"
             )
-        summary_ref = context.artifacts.publish(
-            context.artifacts.workspace / summary_relative,
-            kind="analysis_metadata",
-            media_type="application/json",
-            metadata=_provenance(
-                self._binding,
-                typed.dataset,
-                parameters=parameters,
-            ),
-        )
+        provisional_summary_ref = by_uri[summary_uri]
         with context.artifacts.open_verified(
-            summary_ref,
-            expected_kind="analysis_metadata",
+            provisional_summary_ref,
         ) as stream:
             try:
                 metrics = json.load(stream)
@@ -265,6 +260,34 @@ class AtomicAnalysisCapability:
             raise CapabilityExecutionError(
                 f"{self._binding.tool_name} summary 必须是 JSON object"
             )
+        try:
+            scientific_evidence = AtomicScientificEvidence.model_validate(
+                metrics.get("scientific_evidence")
+            )
+        except Exception as exc:
+            raise CapabilityExecutionError(
+                f"{self._binding.tool_name} scientific evidence 无效"
+            ) from exc
+        if (
+            scientific_evidence.operation != self._binding.tool_name
+            or scientific_evidence.source_artifact_id != typed.dataset.artifact_id
+            or scientific_evidence.parameters != parameters
+            or scientific_evidence.random_seed != self._binding.random_seed
+        ):
+            raise CapabilityExecutionError(
+                f"{self._binding.tool_name} scientific evidence 与当前调用不一致"
+            )
+        summary_ref = context.artifacts.publish(
+            context.artifacts.workspace / summary_relative,
+            kind="analysis_metadata",
+            media_type="application/json",
+            metadata=_provenance(
+                self._binding,
+                typed.dataset,
+                parameters=parameters,
+                evidence=scientific_evidence,
+            ),
+        )
 
         output_dataset: ArtifactRef | None = None
         dataset_uri = f"workspace://{dataset_relative}"
@@ -281,6 +304,7 @@ class AtomicAnalysisCapability:
                     self._binding,
                     typed.dataset,
                     parameters=parameters,
+                    evidence=scientific_evidence,
                 ),
             )
 
@@ -299,6 +323,7 @@ class AtomicAnalysisCapability:
                     self._binding,
                     typed.dataset,
                     parameters=parameters,
+                    evidence=scientific_evidence,
                 ),
             )
             with context.artifacts.open_verified(
@@ -312,6 +337,10 @@ class AtomicAnalysisCapability:
                 raise CapabilityExecutionError(
                     f"{self._binding.tool_name} 产出的 marker contract 为空"
                 )
+            _validate_marker_evidence(
+                marker_contract,
+                scientific_evidence,
+            )
 
         explicit_artifacts: list[ArtifactRef] = []
         for ref in produced:
@@ -328,6 +357,7 @@ class AtomicAnalysisCapability:
                             self._binding,
                             typed.dataset,
                             parameters=parameters,
+                            evidence=scientific_evidence,
                         ),
                     )
                 )
@@ -348,6 +378,7 @@ class AtomicAnalysisCapability:
             output_dataset=output_dataset,
             artifacts=artifacts,
             marker_table=marker_table,
+            scientific_evidence=scientific_evidence,
             metrics=metrics,
         )
 
@@ -373,25 +404,78 @@ def _provenance(
     source: ArtifactRef,
     *,
     parameters: dict[str, Any] | None = None,
+    evidence: AtomicScientificEvidence,
 ) -> dict[str, Any]:
-    previous_state = source.metadata.get("dataset_state")
-    state = {
-        str(item)
-        for item in (
-            previous_state
-            if isinstance(previous_state, list)
-            else []
-        )
-        if isinstance(item, str)
-    }
-    state.update(binding.dataset_state_updates)
+    output_state = evidence.output_state
+    state: set[str] = set()
+    if output_state.expression_space in {
+        "normalized_log1p",
+        "log1p_detected",
+    }:
+        state.add("normalized_log1p")
+    if output_state.quality_control_signature is not None:
+        state.add("quality_controlled")
+    if output_state.has_pca:
+        state.add("pca")
+    if output_state.has_neighbors:
+        state.add("neighbors")
+    if output_state.has_leiden:
+        state.add("leiden_clusters")
     return {
         "operation": binding.tool_name,
         "operation_version": "1.0",
         "source_artifact_id": str(source.artifact_id),
         "parameters": parameters or {},
         "dataset_state": sorted(state),
+        "scientific_state": output_state.model_dump(mode="json"),
+        "operation_disposition": evidence.disposition.value,
+        "scientific_validation": {
+            "status": evidence.validation_status,
+            "checks": evidence.validation_checks,
+        },
     }
+
+
+def _validate_marker_evidence(
+    marker_contract: MarkerTableContract,
+    evidence: AtomicScientificEvidence,
+) -> None:
+    selection = evidence.marker_selection
+    if selection is None:
+        raise CapabilityExecutionError("marker scientific evidence 缺失")
+    metadata_selection = marker_contract.metadata.get("selection")
+    if metadata_selection != selection.model_dump(mode="json"):
+        raise CapabilityExecutionError(
+            "marker contract metadata 与 scientific evidence 不一致"
+        )
+
+    counts: dict[str, int] = {}
+    reported = set(selection.reported_clusters)
+    for marker in marker_contract.markers:
+        if marker.cluster_id not in reported:
+            raise CapabilityExecutionError("marker 行引用了未报告 cluster")
+        if not all(
+            math.isfinite(value)
+            for value in (
+                marker.p_val,
+                marker.p_val_adj,
+                marker.log2FC,
+                marker.pct_1,
+                marker.pct_2,
+            )
+        ):
+            raise CapabilityExecutionError("marker 行包含非有限统计量")
+        if not 0 <= marker.p_val <= 1 or not 0 <= marker.p_val_adj <= 1:
+            raise CapabilityExecutionError("marker P 值超出 [0, 1]")
+        if marker.p_val_adj >= selection.adjusted_p_value_max:
+            raise CapabilityExecutionError("marker 行违反 adjusted p-value 阈值")
+        if marker.log2FC <= selection.min_log2_fold_change:
+            raise CapabilityExecutionError("marker 行违反 log2 fold-change 阈值")
+        if not 0 <= marker.pct_1 <= 1 or not 0 <= marker.pct_2 <= 1:
+            raise CapabilityExecutionError("marker 表达比例超出 [0, 1]")
+        counts[marker.cluster_id] = counts.get(marker.cluster_id, 0) + 1
+    if counts != selection.selected_counts:
+        raise CapabilityExecutionError("marker 实际行数与 selected_counts 不一致")
 
 
 def _render_atomic_code(
@@ -401,6 +485,7 @@ def _render_atomic_code(
     raw_data_path: str,
     sandbox_root: str,
     parameters: dict[str, Any],
+    source_artifact_id: str,
 ) -> str:
     try:
         script = recipe.script_path.read_text(encoding="utf-8")
@@ -413,9 +498,11 @@ def _render_atomic_code(
     marker_path = f"{sandbox_root}/markers.json"
     summary_path = f"{sandbox_root}/summary.json"
     return f"""
+import hashlib as _atomic_hashlib
 import json as _atomic_json
 from pathlib import Path as _AtomicPath
 import anndata as _atomic_anndata
+import numpy as _atomic_np
 import scanpy as sc
 
 if (
@@ -431,21 +518,150 @@ raw_data_path = {raw_data_path!r}
 artifact_output_root = {sandbox_root!r}
 marker_table_path = {marker_path!r}
 tool_parameters = {parameters!r}
+_atomic_source_artifact_id = {source_artifact_id!r}
+_atomic_random_seed = {binding.random_seed!r}
 _atomic_output_root = _AtomicPath(artifact_output_root)
 _atomic_output_root.mkdir(parents=True, exist_ok=True)
+
+
+def _atomic_sample_values(_adata, _max_values=200000):
+    _matrix = _adata.X
+    _values = (
+        _atomic_np.asarray(_matrix.data)
+        if hasattr(_matrix, "data") and not isinstance(_matrix, _atomic_np.ndarray)
+        else _atomic_np.asarray(_matrix).ravel()
+    )
+    _values = _values[_atomic_np.isfinite(_values)]
+    if _values.size > _max_values:
+        _values = _values[:_max_values]
+    return _values
+
+
+def _atomic_detect_expression_space(_adata):
+    _values = _atomic_sample_values(_adata)
+    _positive = _values[_values > 0]
+    _matrix_is_log_like = False
+    if _positive.size:
+        _maximum = float(_atomic_np.max(_positive))
+        _non_integer_fraction = float(
+            _atomic_np.mean(
+                _atomic_np.abs(_positive - _atomic_np.round(_positive)) > 1e-3
+            )
+        )
+        _matrix_is_log_like = (
+            _maximum <= 30.0
+            and _non_integer_fraction >= 0.1
+        )
+    _recorded = _adata.uns.get("omnicell_scientific_state")
+    if isinstance(_recorded, dict):
+        _space = str(_recorded.get("expression_space") or "")
+        if (
+            _space == "normalized_log1p"
+            and _atomic_signature(_recorded, "normalization_signature")
+            and _matrix_is_log_like
+        ):
+            return "normalized_log1p", "omnicell_lineage_and_matrix"
+        if _space == "log1p_detected" and _matrix_is_log_like:
+            return "log1p_detected", "omnicell_hint_and_matrix"
+    if "log1p" in _adata.uns and _matrix_is_log_like:
+        return "log1p_detected", "anndata_metadata_and_matrix"
+    if _matrix_is_log_like:
+        return "log1p_detected", "bounded_value_detection"
+    return "unknown", "none"
+
+
+def _atomic_cluster_ids(_adata):
+    if "leiden" not in _adata.obs:
+        return []
+    _values = {{
+        str(value)
+        for value in _adata.obs["leiden"].dropna().tolist()
+        if str(value).strip()
+    }}
+    return sorted(
+        _values,
+        key=lambda value: (
+            0,
+            int(value),
+        ) if value.lstrip("-").isdigit() else (1, value),
+    )
+
+
+def _atomic_signature(_state, _key):
+    _value = _state.get(_key)
+    if (
+        isinstance(_value, str)
+        and len(_value) == 64
+        and all(char in "0123456789abcdef" for char in _value)
+    ):
+        return _value
+    return None
+
+
+def _atomic_dataset_state(_adata):
+    _recorded = _adata.uns.get("omnicell_scientific_state")
+    _recorded = _recorded if isinstance(_recorded, dict) else {{}}
+    _space, _space_basis = _atomic_detect_expression_space(_adata)
+    _clusters = _atomic_cluster_ids(_adata)
+    _has_pca = "X_pca" in _adata.obsm
+    _has_neighbors = (
+        "neighbors" in _adata.uns
+        and "connectivities" in _adata.obsp
+        and "distances" in _adata.obsp
+    )
+    return {{
+        "n_obs": int(_adata.n_obs),
+        "n_vars": int(_adata.n_vars),
+        "expression_space": _space,
+        "expression_space_basis": _space_basis,
+        "has_pca": bool(_has_pca),
+        "has_neighbors": bool(_has_neighbors),
+        "has_leiden": bool(_clusters),
+        "cluster_ids": _clusters,
+        "quality_control_signature": _atomic_signature(
+            _recorded,
+            "quality_control_signature",
+        ),
+        "normalization_signature": _atomic_signature(
+            _recorded,
+            "normalization_signature",
+        ),
+        "pca_signature": (
+            _atomic_signature(_recorded, "pca_signature")
+            if _has_pca
+            else None
+        ),
+        "clustering_signature": (
+            _atomic_signature(_recorded, "clustering_signature")
+            if _clusters
+            else None
+        ),
+    }}
+
+
 adata = sc.read_h5ad(raw_data_path)
-_atomic_before = {{
-    "n_obs": int(adata.n_obs),
-    "n_vars": int(adata.n_vars),
-    "has_pca": bool("X_pca" in adata.obsm),
-    "has_leiden": bool("leiden" in adata.obs),
-    "has_log1p": bool("log1p" in adata.uns),
-}}
+_atomic_before = _atomic_dataset_state(adata)
+_atomic_parameter_signature = _atomic_hashlib.sha256(
+    _atomic_json.dumps(
+        tool_parameters,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+).hexdigest()
+_atomic_operation_disposition = "executed"
+_atomic_validation_checks = []
 _atomic_required_features = {binding.required_features!r}
 if "pca" in _atomic_required_features and "X_pca" not in adata.obsm:
     raise ValueError("ATOMIC_INPUT_ERROR: input requires X_pca")
 if "leiden" in _atomic_required_features and "leiden" not in adata.obs:
     raise ValueError("ATOMIC_INPUT_ERROR: input requires leiden")
+if {binding.requires_log_expression!r} and (
+    _atomic_before["expression_space"] == "unknown"
+):
+    raise ValueError(
+        "ATOMIC_INPUT_ERROR: input expression space must be log-normalized"
+    )
 try:
     exec(
         compile(
@@ -460,46 +676,182 @@ except SystemExit as _atomic_exit:
     if _atomic_exit.code not in (None, 0):
         raise
 
+_atomic_after = _atomic_dataset_state(adata)
+if _atomic_after["n_obs"] <= 0 or _atomic_after["n_vars"] <= 0:
+    raise RuntimeError("scientific postcondition failed: dataset is empty")
+_atomic_validation_checks.append("dataset_nonempty")
+
+if {binding.tool_name!r} == "quality_control":
+    if (
+        _atomic_after["n_obs"] > _atomic_before["n_obs"]
+        or _atomic_after["n_vars"] > _atomic_before["n_vars"]
+    ):
+        raise RuntimeError("quality-control postcondition expanded the dataset")
+    if (
+        _atomic_after["quality_control_signature"]
+        != _atomic_parameter_signature
+    ):
+        raise RuntimeError("quality-control signature postcondition failed")
+    _atomic_validation_checks.extend(
+        ["cell_gene_counts_nonincreasing", "quality_control_signature_verified"]
+    )
+elif {binding.tool_name!r} == "normalize_expression":
+    if _atomic_after["expression_space"] == "unknown":
+        raise RuntimeError("normalization postcondition failed")
+    _values = _atomic_sample_values(adata)
+    if _values.size and (
+        not bool(_atomic_np.all(_atomic_np.isfinite(_values)))
+        or bool(_atomic_np.any(_values < 0))
+    ):
+        raise RuntimeError("normalized expression contains invalid values")
+    _atomic_validation_checks.append("log_expression_values_verified")
+    if _atomic_operation_disposition == "executed":
+        if (
+            _atomic_after["expression_space"] != "normalized_log1p"
+            or _atomic_after["normalization_signature"]
+            != _atomic_parameter_signature
+        ):
+            raise RuntimeError("normalization operation signature mismatch")
+        _sample = adata.X[: min(int(adata.n_obs), 256)]
+        _dense = (
+            _sample.toarray()
+            if hasattr(_sample, "toarray")
+            else _atomic_np.asarray(_sample)
+        )
+        _row_sums = _atomic_np.expm1(_dense).sum(axis=1)
+        _nonzero_sums = _row_sums[_row_sums > 0]
+        if (
+            not _nonzero_sums.size
+            or not bool(
+                _atomic_np.allclose(
+                    _nonzero_sums,
+                    float(tool_parameters["target_sum"]),
+                    rtol=5e-3,
+                    atol=1e-2,
+                )
+            )
+        ):
+            raise RuntimeError("normalization target_sum postcondition failed")
+        _atomic_validation_checks.extend(
+            ["normalization_signature_verified", "target_sum_verified"]
+        )
+    elif _atomic_operation_disposition == "reused":
+        _atomic_validation_checks.append("existing_log_space_verified")
+    else:
+        raise RuntimeError("normalization disposition is invalid")
+elif {binding.tool_name!r} == "cluster_cells":
+    if not (
+        _atomic_after["has_pca"]
+        and _atomic_after["has_neighbors"]
+        and _atomic_after["has_leiden"]
+    ):
+        raise RuntimeError("PCA/clustering postcondition failed")
+    if (
+        _atomic_after["pca_signature"] != _atomic_parameter_signature
+        or _atomic_after["clustering_signature"] != _atomic_parameter_signature
+    ):
+        raise RuntimeError("PCA/clustering signature postcondition failed")
+    _pca = _atomic_np.asarray(adata.obsm["X_pca"])
+    if (
+        _pca.ndim != 2
+        or _pca.shape[0] != int(adata.n_obs)
+        or _pca.shape[1] < 2
+        or not bool(_atomic_np.all(_atomic_np.isfinite(_pca)))
+    ):
+        raise RuntimeError("PCA matrix postcondition failed")
+    if _atomic_operation_disposition not in {{"executed", "reused"}}:
+        raise RuntimeError("clustering disposition is invalid")
+    _atomic_validation_checks.extend(
+        [
+            "pca_matrix_verified",
+            "neighbor_graph_verified",
+            "cluster_labels_verified",
+            "clustering_signature_verified",
+        ]
+    )
+
 _atomic_images = sorted(
     str(path.name)
     for path in _atomic_output_root.iterdir()
-    if path.is_file() and path.suffix.lower() in {{".png", ".jpg", ".jpeg", ".svg"}}
+    if path.is_file()
+    and path.suffix.lower() in {{".png", ".jpg", ".jpeg", ".svg"}}
 )
-_atomic_metrics = {{
-    "n_obs_before": _atomic_before["n_obs"],
-    "n_obs_after": int(adata.n_obs),
-    "n_vars_before": _atomic_before["n_vars"],
-    "n_vars_after": int(adata.n_vars),
-    "pca_reused": bool(_atomic_before["has_pca"]),
-    "clustering_reused": bool(_atomic_before["has_leiden"]),
-    "normalization_applied": bool(
-        not _atomic_before["has_log1p"] and "log1p" in adata.uns
-    ),
-    "has_pca": bool("X_pca" in adata.obsm),
-    "has_leiden": bool("leiden" in adata.obs),
-    "cluster_count": int(
-        adata.obs["leiden"].nunique() if "leiden" in adata.obs else 0
-    ),
-    "images": _atomic_images,
-}}
+_atomic_marker_selection = None
+_atomic_marker_count = 0
 if {binding.mode!r} == "transform":
-    if {binding.tool_name!r} == "cluster_cells" and (
-        "X_pca" not in adata.obsm or "leiden" not in adata.obs
-    ):
-        raise RuntimeError("PCA/clustering postcondition failed")
     adata.write_h5ad({dataset_path!r})
+    _atomic_validation_checks.append("dataset_artifact_written")
 elif {binding.mode!r} == "extract":
     _atomic_marker_path = _AtomicPath(marker_table_path)
     if not _atomic_marker_path.is_file():
         raise RuntimeError("marker output missing")
     with _atomic_marker_path.open("r", encoding="utf-8") as _atomic_marker_stream:
-        _atomic_marker_rows = _atomic_json.load(_atomic_marker_stream)
-    if not isinstance(_atomic_marker_rows, list) or not _atomic_marker_rows:
-        raise RuntimeError("marker output is empty")
-    _atomic_metrics["marker_count"] = len(_atomic_marker_rows)
-elif {binding.mode!r} == "visualize" and not _atomic_images:
-    raise RuntimeError("visualization output missing")
+        _atomic_marker_payload = _atomic_json.load(_atomic_marker_stream)
+    if not isinstance(_atomic_marker_payload, dict):
+        raise RuntimeError("marker output must use the versioned envelope")
+    _atomic_marker_rows = _atomic_marker_payload.get("markers")
+    _atomic_marker_selection = (
+        _atomic_marker_payload.get("metadata") or {{}}
+    ).get("selection")
+    if (
+        not isinstance(_atomic_marker_rows, list)
+        or not _atomic_marker_rows
+        or not isinstance(_atomic_marker_selection, dict)
+    ):
+        raise RuntimeError("marker output or selection evidence is empty")
+    _atomic_marker_count = len(_atomic_marker_rows)
+    if _atomic_marker_selection.get("marker_count") != _atomic_marker_count:
+        raise RuntimeError("marker selection count postcondition failed")
+    _atomic_validation_checks.extend(
+        ["marker_thresholds_verified", "marker_cluster_coverage_verified"]
+    )
+elif {binding.mode!r} == "visualize":
+    if not _atomic_images:
+        raise RuntimeError("visualization output missing")
+    if _atomic_after != _atomic_before:
+        raise RuntimeError("visualization unexpectedly changed dataset state")
+    _atomic_validation_checks.append("image_artifact_verified")
 
+_atomic_scientific_evidence = {{
+    "schema_version": 1,
+    "evidence_level": "validated_observation",
+    "operation": {binding.tool_name!r},
+    "source_artifact_id": _atomic_source_artifact_id,
+    "disposition": _atomic_operation_disposition,
+    "parameters": tool_parameters,
+    "random_seed": _atomic_random_seed,
+    "input_state": _atomic_before,
+    "output_state": _atomic_after,
+    "validation_status": "verified",
+    "validation_checks": _atomic_validation_checks,
+}}
+if _atomic_marker_selection is not None:
+    _atomic_scientific_evidence["marker_selection"] = _atomic_marker_selection
+
+_atomic_metrics = {{
+    "n_obs_before": _atomic_before["n_obs"],
+    "n_obs_after": _atomic_after["n_obs"],
+    "n_vars_before": _atomic_before["n_vars"],
+    "n_vars_after": _atomic_after["n_vars"],
+    "pca_reused": bool(
+        {binding.tool_name!r} == "cluster_cells"
+        and _atomic_operation_disposition == "reused"
+    ),
+    "clustering_reused": bool(
+        {binding.tool_name!r} == "cluster_cells"
+        and _atomic_operation_disposition == "reused"
+    ),
+    "normalization_applied": bool(
+        {binding.tool_name!r} == "normalize_expression"
+        and _atomic_operation_disposition == "executed"
+    ),
+    "has_pca": _atomic_after["has_pca"],
+    "has_leiden": _atomic_after["has_leiden"],
+    "cluster_count": len(_atomic_after["cluster_ids"]),
+    "marker_count": _atomic_marker_count,
+    "images": _atomic_images,
+    "scientific_evidence": _atomic_scientific_evidence,
+}}
 with _AtomicPath({summary_path!r}).open("w", encoding="utf-8") as _atomic_summary:
     _atomic_json.dump(
         _atomic_metrics,

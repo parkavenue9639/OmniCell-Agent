@@ -1,5 +1,9 @@
 # OmniCell-Agent
 
+<p align="center">
+  <img src="assets/omnicell-agent-icon.svg" alt="OmniCell-Agent 图标" width="160">
+</p>
+
 OmniCell-Agent 是一个面向单细胞 RNA 测序分析的本地科研 Agent 原型。系统以通用 LangGraph Agent Loop 为编排核心，让模型根据用户目标动态选择直接回复、检查 Tool、原子科学 Tool、需要 Skill 方法上下文的复合 Tool，或为多步目标创建显式计划。
 
 项目保留了历史分析与细胞注释流程中已经验证的科学行为，但不再把它们按固定图分类暴露给 Agent。公共能力围绕科学目标、输入输出和前置条件组织：
@@ -16,10 +20,14 @@ OmniCell-Agent 是一个面向单细胞 RNA 测序分析的本地科研 Agent �
 - Skill 与 Tool 正交注册，并支持按需加载 Skill 正文、reference 与 example；详细方法问答可以只加载 Skill 后直接回答，不强制执行分析 Tool；
 - 公共能力按 `mode`、科学 `effect`、artifact 输入输出和前置条件描述；
 - 五个可独立组合的原子分析 Tool，通过版本化 `ArtifactRef` 串联；
+- 原子 Tool 记录实际 `executed/reused`、输入输出科学状态、参数、随机种子和后置校验，marker 阈值不做静默降级；
+- 当前 Run 的有界科研证据独立于历史消息和 Memory；自然回复与 `finish_task` 共用 backend 权威渲染，模型自由文本不会把错误执行状态、数量或 Artifact 发布为科学终答；
+- 探索性分析按 attempt 隔离输出，调用时声明类型化验收目标，并由 backend 生成科学级、结构级和草稿级结果清单及跨产物一致性证据；
 - 计划步骤必须绑定当前 run 的真实 Tool 证据后才能完成；
 - Tool 失败以稳定 `error_code`、`retryable` 和 `recovery_hint` 返回，阻断无变化的重复失败；
 - 基于 Local Docker Backend 的隔离科学计算环境，默认禁止容器网络；
 - PostgreSQL 持久化 conversation、run、event、artifact 与 LangGraph checkpoint；
+- 可显式授权、纠正、遗忘和永久清除的本地跨会话 Memory Plane，默认关闭；
 - 通过逻辑角色 alias 切换模型和 OpenAI-compatible provider 的 LLM Factory；
 - 根据首条有效用户目标自动生成并持久化有辨识度的 conversation 标题；
 - React conversation 界面，以及可重放的类型化 SSE 事件流；
@@ -67,6 +75,8 @@ Agent 遵循“最小充分路径”，不会因为 conversation 中存在数据
 每条用户输入对应一个 Run，但普通问答不会额外创建 `agent_goal` Task。没有未完成显式计划时，Agent 返回非空最终文本即可完成 Run；Task 只在创建计划步骤或实际调用 Tool 时出现，`finish_task` 仅用于需要显式 evidence 或 limitations 的结构化完成。
 
 原子 Tool 不依赖上一次容器调用的内存状态。会改变数据的操作总是生成新的 dataset artifact，后续步骤必须使用前一步返回的新 `ArtifactRef`。
+
+“Tool 已运行”“科学目标已完成”和“某个事实已经验证”是三个不同层次。Frontend 可以展示真实命令和 stdout 供理解过程，但只有 backend 科学后置校验形成的当前 Run 证据可以支撑当前数据结论；注释验证失败、证据不支持或 marker 覆盖不完整时会明确要求人工复核。
 
 ## 仓库结构
 
@@ -138,11 +148,13 @@ docker build \
 ### 4. 初始化数据库
 
 ```bash
-uv run --package omnicell-agent omnicell-db migrate
-uv run --package omnicell-agent omnicell-db check
+make db-migrate
+make db-check
 ```
 
 Migration 是显式管理步骤。API 启动时只校验应用 schema 与 checkpoint schema，不会隐式建表。
+这两个 Make 入口与 `make dev` 一样直接使用当前 checkout 的
+`backend/src`，不依赖虚拟环境中 editable-install 的 `.pth` 状态。
 
 ### 5. 一键启动前后端
 
@@ -193,6 +205,20 @@ npm run dev
 空 conversation 在提交首条有效目标后会由 backend 自动生成简洁标题；标题会同步到侧边栏与页面头部，并在刷新后从 PostgreSQL 恢复。标题模型失败不会影响 Run，系统会使用当前目标生成有界兜底标题。
 
 SSE 连接断开不会取消 run。页面重连后会从最后一个已确认 sequence 重放持久化事件，再继续跟随实时事件。
+
+### 跨会话记忆
+
+跨会话记忆默认关闭。第一次使用时，在右侧“记忆”面板开启一次“跨会话记忆”，并确认相关内容可以发送给当前配置的 LLM。此后每条消息都会自动查找少量相关记忆，不需要为每个 Run 再选择模式。
+
+日常使用直接通过自然语言完成：
+
+- 表达“以后回答先给结论”这类长期偏好时，Agent 可以主动在当前时间线提出候选，点击“确认记住”后才会生效，不需要固定说“请记住”；
+- 表达“以后不再使用刚才的回答偏好”这类明确撤销意图时，Agent 会定位目标并请求确认，不需要固定说“忘记”；
+- “这次只用两句话”这类仅限当前任务的要求不会成为长期记忆；
+- 候选会保留整条来源消息；如果长期偏好和“现在分析这个数据集”等当前任务写在同一条消息里，Agent 会跳过提议，建议在后续消息中单独表达长期偏好；
+- 在右侧“记忆”面板可以手动新增、纠正、忘记或彻底删除，也可以随时关闭总开关。
+
+Agent 每个 Run 最多提出一条候选，而且不会主动记住寒暄、敏感推断、凭据、患者信息、执行输出或当前数据集的科学结论。“忘记”会让未来对话停止使用该内容；“彻底删除”还会清除保存的正文，并防止 Agent 从旧对话重新学习它。已经发送给当前 LLM 的内容无法撤回。系统内部仍保留精确版本、来源、Run snapshot 和 identity-only 事件，但这些技术细节默认折叠，不影响普通使用；历史科学观察也不会被自动当成当前数据证据或扩大 artifact 权限。
 
 ## 常用环境变量
 
@@ -257,11 +283,20 @@ OMNICELL_TEST_POSTGRES_DSN="postgresql://omnicell:omnicell_dev@127.0.0.1:55432/o
 
 Live E2E 使用确定性的模型和 Tool handler 替身验证产品链路，不把真实 LLM 波动作为回归门槛。
 
+需要在测试结束后打开页面检查刚生成的 conversation、事件和 artifact 时，使用可观察模式：
+
+```bash
+OMNICELL_TEST_POSTGRES_DSN="postgresql://omnicell:omnicell_dev@127.0.0.1:55432/omnicell" \
+  make e2e-live-inspect
+```
+
+测试通过后命令会保持 frontend 与 backend 运行，并打印可直接打开的 frontend 地址、独立 PostgreSQL schema、workspace 和 `inspection.json` 回执路径。按 `Ctrl+C` 会停止本次服务，但保留 schema 与 workspace；默认 `test:e2e:live` 仍会自动清理全部临时资源。保留的数据仅用于本机人工检查，不会写入日常开发 schema。
+
 ## 当前边界
 
 - 这是本地科研原型，默认仅监听 loopback；项目尚未提供面向公网的鉴权与生产部署方案；
 - 当前公开五个经过契约验证的原子 Tool。批次校正、轨迹推断、快速自动注释及空间分析仍是候选能力，尚未进入公共 Tool 面；
-- `cluster_cells` 要求输入已经归一化，目前由 Skill 指引、Tool 提示和受验证的调用顺序约束，尚未通过 dataset provenance 做运行时 fail-closed 判定；
+- `cluster_cells` 和 marker 分析要求输入具有经过矩阵特征与 lineage 共同确认的 log-expression 状态；孤立的 AnnData metadata 不能解锁执行，状态不明时运行时 fail-closed；
 - 本轮是全新重构，只保留历史流程中已验证的核心科研行为，不兼容旧模块路径、旧 CLI、旧 API、旧能力名或固定 DAG 入口；
 - 真实模型测试属于观察性证据；确定性契约测试和受控模型替身承担可复现回归门槛。
 

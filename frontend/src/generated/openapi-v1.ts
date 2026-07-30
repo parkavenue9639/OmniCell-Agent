@@ -172,6 +172,144 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Memories */
+        get: operations["listMemories"];
+        put?: never;
+        /** Create Memory */
+        post: operations["createMemory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memories/{memory_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Memory */
+        get: operations["getMemory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memories/{memory_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Memory */
+        post: operations["approveMemory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memories/{memory_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Memory */
+        post: operations["correctMemory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memories/{memory_id}/forget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forget Memory */
+        post: operations["forgetMemory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memories/{memory_id}/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Purge Memory */
+        post: operations["purgeMemory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/provider-consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Memory Provider Consent */
+        post: operations["decideMemoryProviderConsent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memory/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Memory Settings */
+        get: operations["getMemorySettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Memory Settings */
+        patch: operations["updateMemorySettings"];
+        trace?: never;
+    };
     "/api/v1/reviews/{review_id}/decision": {
         parameters: {
             query?: never;
@@ -249,6 +387,23 @@ export interface paths {
         };
         /** Stream Events */
         get: operations["streamRunEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/memory-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run Memory Context */
+        get: operations["getRunMemoryContext"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1046,7 +1201,7 @@ export interface components {
              */
             conversation_id: string;
             /** Events */
-            events: (components["schemas"]["RunCreatedEvent"] | components["schemas"]["RunStartedEvent"] | components["schemas"]["AgentTurnStartedEvent"] | components["schemas"]["AgentToolStartedEvent"] | components["schemas"]["AgentToolCompletedEvent"] | components["schemas"]["AgentToolFailedEvent"] | components["schemas"]["MessageCompletedEvent"] | components["schemas"]["TaskCreatedEvent"] | components["schemas"]["TaskUpdatedEvent"] | components["schemas"]["SkillLoadStartedEvent"] | components["schemas"]["SkillLoadCompletedEvent"] | components["schemas"]["SkillLoadFailedEvent"] | components["schemas"]["CapabilityStartedEvent"] | components["schemas"]["CapabilityCompletedEvent"] | components["schemas"]["CapabilityFailedEvent"] | components["schemas"]["CapabilityRetryingEvent"] | components["schemas"]["CapabilityProgressEvent"] | components["schemas"]["RuntimeCommandStartedEvent"] | components["schemas"]["RuntimeOutputEvent"] | components["schemas"]["RuntimeCommandCompletedEvent"] | components["schemas"]["ArtifactCreatedEvent"] | components["schemas"]["ReviewRequestedEvent"] | components["schemas"]["ReviewResolvedEvent"] | components["schemas"]["BudgetExhaustedEvent"] | components["schemas"]["RunCancelRequestedEvent"] | components["schemas"]["RunInterruptedEvent"] | components["schemas"]["RunCompletedEvent"] | components["schemas"]["RunFailedEvent"] | components["schemas"]["RunCancelledEvent"])[];
+            events: (components["schemas"]["RunCreatedEvent"] | components["schemas"]["RunStartedEvent"] | components["schemas"]["MemoryContextLoadedEvent"] | components["schemas"]["MemorySearchCompletedEvent"] | components["schemas"]["MemoryProposalCreatedEvent"] | components["schemas"]["MemoryForgetRequestedEvent"] | components["schemas"]["AgentTurnStartedEvent"] | components["schemas"]["AgentToolStartedEvent"] | components["schemas"]["AgentToolCompletedEvent"] | components["schemas"]["AgentToolFailedEvent"] | components["schemas"]["MessageCompletedEvent"] | components["schemas"]["TaskCreatedEvent"] | components["schemas"]["TaskUpdatedEvent"] | components["schemas"]["SkillLoadStartedEvent"] | components["schemas"]["SkillLoadCompletedEvent"] | components["schemas"]["SkillLoadFailedEvent"] | components["schemas"]["CapabilityStartedEvent"] | components["schemas"]["CapabilityCompletedEvent"] | components["schemas"]["CapabilityFailedEvent"] | components["schemas"]["CapabilityRetryingEvent"] | components["schemas"]["CapabilityProgressEvent"] | components["schemas"]["RuntimeCommandStartedEvent"] | components["schemas"]["RuntimeOutputEvent"] | components["schemas"]["RuntimeCommandCompletedEvent"] | components["schemas"]["ArtifactCreatedEvent"] | components["schemas"]["ReviewRequestedEvent"] | components["schemas"]["ReviewResolvedEvent"] | components["schemas"]["BudgetExhaustedEvent"] | components["schemas"]["RunCancelRequestedEvent"] | components["schemas"]["RunInterruptedEvent"] | components["schemas"]["RunCompletedEvent"] | components["schemas"]["RunFailedEvent"] | components["schemas"]["RunCancelledEvent"])[];
             /** Has More */
             has_more: boolean;
             /** Next Sequence */
@@ -1090,6 +1245,479 @@ export interface components {
              */
             status: "alive";
         };
+        /** MemoryApproveRequest */
+        MemoryApproveRequest: {
+            /** Expected Version */
+            expected_version: number;
+        };
+        /** MemoryCommandResponse */
+        MemoryCommandResponse: {
+            memory: components["schemas"]["MemoryRead"];
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+        };
+        /** MemoryContextInputPayload */
+        MemoryContextInputPayload: {
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "response_preference" | "profile_fact" | "project_context" | "scientific_observation";
+            /**
+             * Selection Reason
+             * @enum {string}
+             */
+            selection_reason: "default" | "selected" | "tool_search";
+            /**
+             * Source Kind
+             * @enum {string}
+             */
+            source_kind: "explicit" | "proposed" | "corrected";
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Version Number */
+            version_number: number;
+        };
+        /** MemoryContextLoadedEvent */
+        MemoryContextLoadedEvent: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            payload: components["schemas"]["MemoryContextLoadedPayload"];
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Sequence */
+            sequence: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "memory.context_loaded";
+        };
+        /** MemoryContextLoadedPayload */
+        MemoryContextLoadedPayload: {
+            /** Content Bytes */
+            content_bytes: number;
+            /** Degraded Code */
+            degraded_code?: ("memory_retrieval_unavailable" | "memory_context_limit_exceeded") | null;
+            /** Inputs */
+            inputs?: components["schemas"]["MemoryContextInputPayload"][];
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "default" | "selected";
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "loaded" | "empty" | "degraded";
+            /**
+             * Scope Key
+             * @default local-default
+             * @constant
+             */
+            scope_key: "local-default";
+            /**
+             * Snapshot Id
+             * Format: uuid
+             */
+            snapshot_id: string;
+        };
+        /** MemoryCorrectRequest */
+        MemoryCorrectRequest: {
+            /** Content */
+            content: string;
+            /** Dataset Scope */
+            dataset_scope?: {
+                [key: string]: string;
+            } | null;
+            /** Expected Version */
+            expected_version: number;
+            /** Source Message Ids */
+            source_message_ids?: string[];
+        };
+        /** MemoryCreateRequest */
+        MemoryCreateRequest: {
+            /** Content */
+            content: string;
+            /** Dataset Scope */
+            dataset_scope?: {
+                [key: string]: string;
+            } | null;
+            /** Expires At */
+            expires_at?: string | null;
+            kind: components["schemas"]["MemoryKind"];
+            /** Source Conversation Id */
+            source_conversation_id?: string | null;
+            /** Source Message Ids */
+            source_message_ids?: string[];
+            /** Source Run Id */
+            source_run_id?: string | null;
+            /** Stable Key */
+            stable_key?: string | null;
+        };
+        /** MemoryForgetRequest */
+        MemoryForgetRequest: {
+            /**
+             * Confirmed
+             * @constant
+             */
+            confirmed: true;
+            /** Expected Version */
+            expected_version: number;
+        };
+        /** MemoryForgetRequestedEvent */
+        MemoryForgetRequestedEvent: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            payload: components["schemas"]["MemoryForgetRequestedPayload"];
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Sequence */
+            sequence: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "memory.forget_requested";
+        };
+        /** MemoryForgetRequestedPayload */
+        MemoryForgetRequestedPayload: {
+            memory: components["schemas"]["MemoryContextInputPayload"];
+            /**
+             * Status
+             * @constant
+             */
+            status: "confirmation_required";
+            /** Tool Call Id */
+            tool_call_id: string;
+        };
+        /**
+         * MemoryKind
+         * @enum {string}
+         */
+        MemoryKind: "response_preference" | "profile_fact" | "project_context" | "scientific_observation";
+        /** MemoryListResponse */
+        MemoryListResponse: {
+            /** Items */
+            items: components["schemas"]["MemoryRead"][];
+            page: components["schemas"]["PageInfo"];
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+        };
+        /** MemoryProposalCreatedEvent */
+        MemoryProposalCreatedEvent: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            payload: components["schemas"]["MemoryProposalCreatedPayload"];
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Sequence */
+            sequence: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "memory.proposal_created";
+        };
+        /** MemoryProposalCreatedPayload */
+        MemoryProposalCreatedPayload: {
+            memory: components["schemas"]["MemoryContextInputPayload"];
+            /**
+             * Status
+             * @constant
+             */
+            status: "proposed";
+            /** Tool Call Id */
+            tool_call_id: string;
+        };
+        /** MemoryProviderConsentRequest */
+        MemoryProviderConsentRequest: {
+            /**
+             * Confirmed
+             * @constant
+             */
+            confirmed: true;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "grant" | "revoke";
+            /**
+             * Statement Version
+             * @constant
+             */
+            statement_version: "memory-provider-v1";
+        };
+        /** MemoryPurgeRequest */
+        MemoryPurgeRequest: {
+            /**
+             * Confirmed
+             * @constant
+             */
+            confirmed: true;
+            /** Expected Version */
+            expected_version: number;
+        };
+        /** MemoryRead */
+        MemoryRead: {
+            /** Content */
+            content?: string | null;
+            /** Content Sha256 */
+            content_sha256?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Version */
+            current_version?: number | null;
+            /** Dataset Scope */
+            dataset_scope?: {
+                [key: string]: string;
+            } | null;
+            /** Expires At */
+            expires_at?: string | null;
+            kind: components["schemas"]["MemoryKind"];
+            /**
+             * Memory Id
+             * Format: uuid
+             */
+            memory_id: string;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /**
+             * Scope Key
+             * @default local-default
+             * @constant
+             */
+            scope_key: "local-default";
+            source?: components["schemas"]["MemorySourceRead"] | null;
+            /** Stable Key */
+            stable_key: string;
+            status: components["schemas"]["MemoryStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version Id */
+            version_id?: string | null;
+        };
+        /**
+         * MemoryRunMode
+         * @enum {string}
+         */
+        MemoryRunMode: "off" | "default" | "selected";
+        /** MemorySearchCompletedEvent */
+        MemorySearchCompletedEvent: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            payload: components["schemas"]["MemorySearchCompletedPayload"];
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Sequence */
+            sequence: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "memory.search_completed";
+        };
+        /** MemorySearchCompletedPayload */
+        MemorySearchCompletedPayload: {
+            /** Inputs */
+            inputs?: components["schemas"]["MemoryContextInputPayload"][];
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "loaded" | "empty";
+            /** Tool Call Id */
+            tool_call_id: string;
+        };
+        /** MemorySelectionRef */
+        MemorySelectionRef: {
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
+        /** MemorySettingsRead */
+        MemorySettingsRead: {
+            /** Enable Agent Tools */
+            enable_agent_tools: boolean;
+            /** Generate Candidates */
+            generate_candidates: boolean;
+            /** Provider Consent Granted */
+            provider_consent_granted: boolean;
+            /** Provider Consent Version */
+            provider_consent_version?: string | null;
+            /** Provider Consented At */
+            provider_consented_at?: string | null;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /**
+             * Scope Key
+             * @default local-default
+             * @constant
+             */
+            scope_key: "local-default";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Use Memory */
+            use_memory: boolean;
+        };
+        /** MemorySettingsUpdateRequest */
+        MemorySettingsUpdateRequest: {
+            /** Enable Agent Tools */
+            enable_agent_tools?: boolean | null;
+            /** Generate Candidates */
+            generate_candidates?: boolean | null;
+            /** Use Memory */
+            use_memory?: boolean | null;
+        };
+        /**
+         * MemorySourceKind
+         * @enum {string}
+         */
+        MemorySourceKind: "explicit" | "proposed" | "corrected";
+        /** MemorySourceRead */
+        MemorySourceRead: {
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /** Message Ids */
+            message_ids?: string[];
+            /** Run Id */
+            run_id?: string | null;
+            source_kind: components["schemas"]["MemorySourceKind"];
+        };
+        /**
+         * MemoryStatus
+         * @enum {string}
+         */
+        MemoryStatus: "proposed" | "active" | "revoked" | "purged";
         /** MessageCompletedEvent */
         MessageCompletedEvent: {
             /**
@@ -1579,8 +2207,12 @@ export interface components {
             goal: string;
             /** Input Artifact Ids */
             input_artifact_ids?: string[];
+            /** @default off */
+            memory_mode: components["schemas"]["MemoryRunMode"];
             /** Request Key */
             request_key?: string | null;
+            /** Selected Memories */
+            selected_memories?: components["schemas"]["MemorySelectionRef"][];
         };
         /** RunCreateResponse */
         RunCreateResponse: {
@@ -1728,6 +2360,64 @@ export interface components {
              * @constant
              */
             status: "review_required";
+        };
+        /** RunMemoryContextRead */
+        RunMemoryContextRead: {
+            /** Created At */
+            created_at?: string | null;
+            /** Degraded Code */
+            degraded_code?: string | null;
+            /** Inputs */
+            inputs?: components["schemas"]["RunMemoryInputRead"][];
+            mode: components["schemas"]["MemoryRunMode"];
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "off" | "pending" | "loaded" | "empty" | "degraded";
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /**
+             * Scope Key
+             * @default local-default
+             * @constant
+             */
+            scope_key: "local-default";
+            /** Snapshot Id */
+            snapshot_id?: string | null;
+        };
+        /** RunMemoryInputRead */
+        RunMemoryInputRead: {
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            kind: components["schemas"]["MemoryKind"];
+            /**
+             * Selection Reason
+             * @enum {string}
+             */
+            selection_reason: "default" | "selected" | "tool_search";
+            source_kind: components["schemas"]["MemorySourceKind"];
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Version Number */
+            version_number: number;
         };
         /** RunRead */
         RunRead: {
@@ -2966,6 +3656,492 @@ export interface operations {
             };
         };
     };
+    listMemories: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                kind?: components["schemas"]["MemoryKind"] | null;
+                limit?: number;
+                status?: components["schemas"]["MemoryStatus"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryListResponse"];
+                };
+            };
+            /** @description 请求语义或游标非法。 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求参数不符合 API 契约。 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryRead"];
+                };
+            };
+            /** @description 请求语义或游标非法。 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求与当前生命周期状态冲突。 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求参数不符合 API 契约。 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryRead"];
+                };
+            };
+            /** @description 请求的资源不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求参数不符合 API 契约。 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approveMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryCommandResponse"];
+                };
+            };
+            /** @description 请求的资源不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求与当前生命周期状态冲突。 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求参数不符合 API 契约。 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    correctMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryCorrectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryCommandResponse"];
+                };
+            };
+            /** @description 请求语义或游标非法。 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求的资源不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求与当前生命周期状态冲突。 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求参数不符合 API 契约。 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    forgetMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryForgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryCommandResponse"];
+                };
+            };
+            /** @description 请求的资源不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求与当前生命周期状态冲突。 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求参数不符合 API 契约。 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    purgeMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryPurgeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryCommandResponse"];
+                };
+            };
+            /** @description 请求的资源不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求与当前生命周期状态冲突。 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求参数不符合 API 契约。 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    decideMemoryProviderConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryProviderConsentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemorySettingsRead"];
+                };
+            };
+            /** @description 请求语义或游标非法。 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求与当前生命周期状态冲突。 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求参数不符合 API 契约。 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getMemorySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemorySettingsRead"];
+                };
+            };
+            /** @description 请求参数不符合 API 契约。 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateMemorySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemorySettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemorySettingsRead"];
+                };
+            };
+            /** @description 请求语义或游标非法。 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求与当前生命周期状态冲突。 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求参数不符合 API 契约。 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     decideReview: {
         parameters: {
             query?: never;
@@ -3182,6 +4358,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求的资源不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description 请求参数不符合 API 契约。 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getRunMemoryContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunMemoryContextRead"];
                 };
             };
             /** @description 请求的资源不存在。 */

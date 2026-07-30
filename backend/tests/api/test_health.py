@@ -222,7 +222,7 @@ def test_production_lifespan_wires_and_clears_readiness(
     monkeypatch.setattr(
         bootstrap,
         "ApiService",
-        lambda unit_of_work, coordinator: api_service,
+        lambda unit_of_work, coordinator, **kwargs: api_service,
     )
 
     def build_readiness(persistence: object) -> object:

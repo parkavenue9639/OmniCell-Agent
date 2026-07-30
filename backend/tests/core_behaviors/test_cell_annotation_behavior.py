@@ -367,8 +367,88 @@ def test_validator_receives_same_quantitative_marker_evidence(
     )
 
     assert result["quality_scores"]["validator_penalty"] == 5
+    assert result["quality_scores"]["validator_supported"] is True
+    assert result["quality_scores"]["validator_failed"] is False
     assert "log2FC=3" in str(captured_messages[1].content)
     assert "delta_pct=0.8" in str(captured_messages[1].content)
+
+
+def test_validator_unsupported_or_failed_results_cannot_keep_a_high_score(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class UnsupportedStructuredModel:
+        def invoke(self, _messages):
+            return validator.ValidatorOutput(
+                is_supported=False,
+                confidence_penalty=0,
+                critique="The marker panel does not support this label.",
+            )
+
+    class UnsupportedModel:
+        def with_structured_output(self, _schema):
+            return UnsupportedStructuredModel()
+
+    monkeypatch.setattr(
+        validator.llm,
+        "get_llm_by_alias",
+        lambda *args, **kwargs: UnsupportedModel(),
+    )
+    state = {
+        "cluster_id": "0",
+        "species": "Human",
+        "tissue": "PBMC",
+        "top_n_markers": ["IL7R", "CCR7", "LTB", "MALAT1", "CD3D"],
+        "top_marker_evidence": [
+            (
+                f"{gene}: log2FC=2, pct_in=0.8, pct_out=0.1, "
+                "delta_pct=0.7, p_adj=0.01"
+            )
+            for gene in ["IL7R", "CCR7", "LTB", "MALAT1", "CD3D"]
+        ],
+        "predictions": {
+            "sub_type": "B cells",
+            "reasoning_chain": "provisional",
+            "marker_evidence": [],
+        },
+        "quality_scores": {"self_consistency_ok": 1.0},
+    }
+
+    unsupported = validator.validator_node(state)
+    unsupported_score = scorer_node(
+        {
+            **state,
+            "quality_scores": unsupported["quality_scores"],
+        }
+    )
+
+    assert unsupported["quality_scores"]["validator_penalty"] == 50
+    assert unsupported["quality_scores"]["validator_supported"] is False
+    assert unsupported_score["quality_scores"]["cs_score"] <= 50
+
+    class FailingStructuredModel:
+        def invoke(self, _messages):
+            raise RuntimeError("controlled validator failure")
+
+    class FailingModel:
+        def with_structured_output(self, _schema):
+            return FailingStructuredModel()
+
+    monkeypatch.setattr(
+        validator.llm,
+        "get_llm_by_alias",
+        lambda *args, **kwargs: FailingModel(),
+    )
+    failed = validator.validator_node(state)
+    failed_score = scorer_node(
+        {
+            **state,
+            "quality_scores": failed["quality_scores"],
+        }
+    )
+
+    assert failed["quality_scores"]["self_consistency_ok"] == 1.0
+    assert failed["quality_scores"]["validator_failed"] is True
+    assert failed_score["quality_scores"]["cs_score"] == 0.0
 
 
 def test_annotation_result_projection_contract(
@@ -387,6 +467,8 @@ def test_annotation_result_projection_contract(
                     "cs_score": 50.0,
                     "self_consistency_ok": 0.0,
                     "boost_applied": True,
+                    "validator_supported": False,
+                    "validator_failed": True,
                 },
                 "retry_count": 1,
             }
@@ -404,7 +486,13 @@ def test_annotation_result_projection_contract(
                 "sub_type": "Rare cells",
                 "cs_score": 50.0,
                 "self_consistency_ok": 0.0,
-                "flags": ["low_self_consistency", "boosted", "needs_review"],
+                "validator_status": "failed",
+                "flags": [
+                    "low_self_consistency",
+                    "boosted",
+                    "validator_failed",
+                    "needs_review",
+                ],
             }
         }
     }
@@ -442,18 +530,20 @@ def test_annotation_controlled_end_to_end_contract(
             "sub_type": "CD4 T cells",
             "reasoning_chain": "Controlled reasoning for CD4 T cells",
             "marker_evidence": ["IL7R -> CD4 T cell lineage"],
-            "cs_score": 95.0,
-            "self_consistency_ok": 1.0,
-            "flags": [],
+                "cs_score": 95.0,
+                "self_consistency_ok": 1.0,
+                "validator_status": "supported",
+                "flags": [],
         },
         "1": {
             "general_type": "Immune cells",
             "sub_type": "B cells",
             "reasoning_chain": "Controlled reasoning for B cells",
             "marker_evidence": ["MS4A1 -> B cell lineage"],
-            "cs_score": 95.0,
-            "self_consistency_ok": 1.0,
-            "flags": [],
+                "cs_score": 95.0,
+                "self_consistency_ok": 1.0,
+                "validator_status": "supported",
+                "flags": [],
         },
     }
     assert final_state["final_report"] == "\n".join(

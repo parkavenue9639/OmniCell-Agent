@@ -121,6 +121,15 @@ def test_pca_clustering_recipe_uses_invocation_artifact_output(
     adata = SimpleNamespace(
         obsm={"X_pca": object(), "X_umap": object()},
         obs={"leiden": object()},
+        obsp={"connectivities": object(), "distances": object()},
+        uns={
+            "neighbors": {},
+            "omnicell_scientific_state": {
+                "expression_space": "normalized_log1p",
+                "pca_signature": "controlled-signature",
+                "clustering_signature": "controlled-signature",
+            },
+        },
     )
     script = (
         Path(__file__).parents[2]
@@ -137,6 +146,7 @@ def test_pca_clustering_recipe_uses_invocation_artifact_output(
         init_globals={
             "adata": adata,
             "artifact_output_root": str(output_root),
+            "_atomic_parameter_signature": "controlled-signature",
             "tool_parameters": {
                 "n_top_genes": 2_000,
                 "n_pcs": 40,
@@ -329,10 +339,14 @@ def test_exploratory_analysis_controlled_end_to_end_contract(
         ],
         "current_step_index": 1,
         "sandbox_execution_result": {
-            "status": "success",
-            "stdout": "controlled-runtime-ok",
-            "stderr": "",
-        },
+                "status": "success",
+                "stdout": "controlled-runtime-ok",
+                "stderr": "",
+                "attempt_output_root": "/app/data/attempt-00-00",
+                "attempt_marker_table_path": (
+                    "/app/data/attempt-00-00/markers.json"
+                ),
+            },
         "eval_record": {"status": "success", "feedback": ""},
         "retry_count": 0,
         "failed_attempts": [],
@@ -341,8 +355,8 @@ def test_exploratory_analysis_controlled_end_to_end_contract(
     assert "sc.pp.normalize_total" in final_state["last_generated_code"]
     assert session.executed_code[0] == (
         "raw_data_path = '/app/data/pbmc3k_raw.h5ad'\n"
-        "marker_table_path = '/app/data/markers.json'\n"
-        "artifact_output_root = '/app/data'\n"
+        "marker_table_path = '/app/data/attempt-00-00/markers.json'\n"
+        "artifact_output_root = '/app/data/attempt-00-00'\n"
         "tool_parameters = {'target_sum': 10000.0}\n"
     )
     assert len(session.executed_code) == 4
