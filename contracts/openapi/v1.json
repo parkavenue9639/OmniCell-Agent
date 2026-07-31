@@ -2414,6 +2414,11 @@
             "title": "Decision",
             "type": "string"
           },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
           "statement_version": {
             "const": "memory-provider-v1",
             "title": "Statement Version",
@@ -2423,7 +2428,8 @@
         "required": [
           "decision",
           "statement_version",
-          "confirmed"
+          "confirmed",
+          "expected_version"
         ],
         "title": "MemoryProviderConsentRequest",
         "type": "object"
@@ -2767,9 +2773,15 @@
           "use_memory": {
             "title": "Use Memory",
             "type": "boolean"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
+          "version",
           "use_memory",
           "generate_candidates",
           "enable_agent_tools",
@@ -2792,6 +2804,11 @@
               }
             ],
             "title": "Enable Agent Tools"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
           },
           "generate_candidates": {
             "anyOf": [
@@ -2816,6 +2833,9 @@
             "title": "Use Memory"
           }
         },
+        "required": [
+          "expected_version"
+        ],
         "title": "MemorySettingsUpdateRequest",
         "type": "object"
       },

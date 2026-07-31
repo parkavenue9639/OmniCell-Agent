@@ -26,28 +26,35 @@ if callable(detector):
 else:
     recorded_state = adata.uns.get("omnicell_scientific_state")
     recorded_state = recorded_state if isinstance(recorded_state, dict) else {}
-    if recorded_state.get("expression_space") in {
-        "normalized_log1p",
-        "log1p_detected",
-    }:
-        input_expression_space = str(recorded_state["expression_space"])
-    elif "log1p" in adata.uns:
-        input_expression_space = "normalized_log1p"
-    else:
-        values = (
-            np.asarray(adata.X.data)
-            if hasattr(adata.X, "data") and not isinstance(adata.X, np.ndarray)
-            else np.asarray(adata.X).ravel()
+    values = (
+        np.asarray(adata.X.data)
+        if hasattr(adata.X, "data") and not isinstance(adata.X, np.ndarray)
+        else np.asarray(adata.X).ravel()
+    )
+    values = values[np.isfinite(values)]
+    positive = values[values > 0][:200000]
+    matrix_is_log_like = False
+    if positive.size:
+        non_integer_fraction = float(
+            np.mean(np.abs(positive - np.round(positive)) > 1e-3)
         )
-        values = values[np.isfinite(values)]
-        positive = values[values > 0][:200000]
+        matrix_is_log_like = (
+            float(np.max(positive)) <= 30.0
+            and non_integer_fraction >= 0.1
+        )
+    recorded_expression_space = recorded_state.get("expression_space")
+    if (
+        recorded_expression_space in {
+            "normalized_log1p",
+            "log1p_detected",
+        }
+        and matrix_is_log_like
+    ):
+        input_expression_space = str(recorded_expression_space)
+    elif matrix_is_log_like:
+        input_expression_space = "log1p_detected"
+    else:
         input_expression_space = "unknown"
-        if positive.size:
-            non_integer_fraction = float(
-                np.mean(np.abs(positive - np.round(positive)) > 1e-3)
-            )
-            if float(np.max(positive)) <= 30.0 and non_integer_fraction >= 0.1:
-                input_expression_space = "log1p_detected"
 if input_expression_space == "unknown":
     raise RuntimeError(
         "RECIPE_INPUT_ERROR: clustering requires log-normalized expression"

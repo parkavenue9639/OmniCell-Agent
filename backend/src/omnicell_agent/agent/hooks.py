@@ -39,8 +39,6 @@ class AgentTurnContext:
         default_factory=list
     )
     transient_memory_bodies: tuple[str, ...] = ()
-    completion_rejection: str | None = None
-    completion_fallback: str | None = None
     completion_replacement: str | None = None
 
 

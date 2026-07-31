@@ -606,36 +606,60 @@ export function ConversationRoute() {
     gcTime: 0,
     mutationFn: async (command: MemoryCommand) => {
       switch (command.kind) {
-        case "setting":
+        case "setting": {
+          const settings = memorySettingsQuery.data;
+          if (settings === undefined) {
+            throw new Error("记忆设置尚未加载，请稍后重试");
+          }
           return updateMemorySettings({
+            expected_version: settings.version,
             [command.setting]: command.enabled,
           });
-        case "enable":
-          if (!memorySettingsQuery.data?.provider_consent_granted) {
-            await updateMemoryProviderConsent({
+        }
+        case "enable": {
+          let settings = memorySettingsQuery.data;
+          if (settings === undefined) {
+            throw new Error("记忆设置尚未加载，请稍后重试");
+          }
+          if (!settings.provider_consent_granted) {
+            settings = await updateMemoryProviderConsent({
               decision: "grant",
               statement_version: MEMORY_PROVIDER_CONSENT_VERSION,
               confirmed: true,
+              expected_version: settings.version,
             });
           }
           return updateMemorySettings({
+            expected_version: settings.version,
             use_memory: true,
             generate_candidates: true,
             enable_agent_tools: true,
           });
-        case "disable":
+        }
+        case "disable": {
+          const settings = memorySettingsQuery.data;
+          if (settings === undefined) {
+            throw new Error("记忆设置尚未加载，请稍后重试");
+          }
           return updateMemorySettings({
+            expected_version: settings.version,
             use_memory: false,
             generate_candidates: false,
             enable_agent_tools: false,
           });
-        case "revoke_consent":
+        }
+        case "revoke_consent": {
+          let settings = memorySettingsQuery.data;
+          if (settings === undefined) {
+            throw new Error("记忆设置尚未加载，请稍后重试");
+          }
           if (
-            memorySettingsQuery.data?.use_memory ||
-            memorySettingsQuery.data?.generate_candidates ||
-            memorySettingsQuery.data?.enable_agent_tools
+            settings.use_memory ||
+            settings.generate_candidates ||
+            settings.enable_agent_tools
           ) {
-            await updateMemorySettings({
+            settings = await updateMemorySettings({
+              expected_version: settings.version,
               use_memory: false,
               generate_candidates: false,
               enable_agent_tools: false,
@@ -645,7 +669,9 @@ export function ConversationRoute() {
             decision: "revoke",
             statement_version: MEMORY_PROVIDER_CONSENT_VERSION,
             confirmed: true,
+            expected_version: settings.version,
           });
+        }
         case "create":
           return createMemory({
             kind: command.memoryKind,

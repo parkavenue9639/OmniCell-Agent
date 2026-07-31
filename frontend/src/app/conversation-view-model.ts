@@ -1428,7 +1428,9 @@ function memoryModels(memories: readonly Memory[]) {
       createdAtLabel: dateLabel(memory.created_at),
       updatedAtLabel: dateLabel(memory.updated_at),
       canApprove: memory.status === "proposed" && version !== undefined,
-      canCorrect: memory.status !== "purged" && version !== undefined,
+      canCorrect:
+        (memory.status === "active" || memory.status === "proposed") &&
+        version !== undefined,
       canForget:
         (memory.status === "active" || memory.status === "proposed") &&
         version !== undefined,

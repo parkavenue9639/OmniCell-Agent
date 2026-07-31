@@ -122,6 +122,46 @@ def test_exploratory_manifest_separates_scientific_and_structural_facts(
     ]
 
 
+def test_marker_rows_violating_selection_are_not_scientific_evidence(
+    tmp_path,
+) -> None:
+    store = ConversationArtifactStore(uuid4(), tmp_path)
+    contract = MarkerTableContract(
+        metadata={
+            "selection": _marker_selection(["0"], {"0": 1}),
+        },
+        markers=[
+            MarkerGene(
+                gene_name="CD3D",
+                cluster_id="0",
+                p_val=0.001,
+                p_val_adj=0.9,
+                log2FC=0.1,
+                pct_1=0.8,
+                pct_2=0.2,
+            )
+        ],
+    )
+    marker_ref = store.write_json(
+        "results/invalid-markers.json",
+        contract.model_dump(mode="json"),
+        kind="marker_table",
+    )
+
+    manifest = build_exploratory_result_manifest(
+        store,
+        [marker_ref],
+        marker_contracts={str(marker_ref.artifact_id): contract},
+        acceptance_criterion="marker_table",
+    )
+
+    assert manifest.scientific_goal_status == "partial"
+    assert manifest.authoritative_fact_count == 0
+    assert manifest.items[0].verification_level == "structural"
+    assert "marker_selection_evidence_invalid" in manifest.items[0].checks
+    assert "goal_acceptance_failed" in manifest.acceptance_checks
+
+
 def test_exploratory_manifest_keeps_unknown_files_as_non_authoritative_drafts(
     tmp_path,
 ) -> None:
@@ -145,6 +185,36 @@ def test_exploratory_manifest_keeps_unknown_files_as_non_authoritative_drafts(
     assert manifest.authoritative_fact_count == 0
     assert manifest.items[0].verification_level == "unverified"
     assert "只能作为草稿" in manifest.limitations[-1]
+
+
+def test_generic_json_key_projection_stays_within_manifest_boundary(
+    tmp_path,
+) -> None:
+    store = ConversationArtifactStore(uuid4(), tmp_path)
+    payload = {
+        f"{index:03d}-{'x' * 400}": index
+        for index in range(100)
+    }
+    ref = store.write_json(
+        "results/wide.json",
+        payload,
+        kind="json",
+    )
+
+    manifest = build_exploratory_result_manifest(
+        store,
+        [ref],
+        marker_contracts={},
+        acceptance_criterion="other",
+    )
+
+    evidence = manifest.items[0]
+    assert evidence.verification_level == "structural"
+    assert len(evidence.facts["top_level_keys"]) == 100
+    assert all(
+        len(key) <= 96
+        for key in evidence.facts["top_level_keys"]
+    )
 
 
 def test_publish_new_files_filters_failed_attempt_directories(tmp_path) -> None:

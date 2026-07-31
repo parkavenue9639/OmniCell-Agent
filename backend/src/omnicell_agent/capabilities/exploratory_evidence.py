@@ -21,6 +21,7 @@ from .contracts import (
     ExploratoryResultManifest,
     MarkerSelectionEvidence,
 )
+from .marker_validation import validate_marker_selection
 
 
 def build_exploratory_result_manifest(
@@ -99,6 +100,7 @@ def _validate_artifact(
         selection = marker_contract.metadata.get("selection")
         try:
             selection_evidence = MarkerSelectionEvidence.model_validate(selection)
+            validate_marker_selection(marker_contract, selection_evidence)
         except Exception:
             selection_evidence = None
         declared_clusters = (
@@ -107,14 +109,17 @@ def _validate_artifact(
             else None
         )
         clusters = sorted(
-            (
-                {str(item) for item in declared_clusters}
-                if isinstance(declared_clusters, list)
-                else {
-                    str(marker.cluster_id)
-                    for marker in marker_contract.markers
-                }
-            ),
+            {
+                str(item)
+                for item in (
+                    declared_clusters
+                    if isinstance(declared_clusters, list)
+                    else [
+                        marker.cluster_id
+                        for marker in marker_contract.markers
+                    ]
+                )
+            },
             key=_cluster_sort_key,
         )
         return ExploratoryArtifactEvidence(
@@ -135,7 +140,7 @@ def _validate_artifact(
                         "cluster_projection_verified",
                     ]
                     if selection_evidence is not None
-                    else ["marker_selection_evidence_missing"]
+                    else ["marker_selection_evidence_invalid"]
                 ),
             ],
             facts={
@@ -223,7 +228,10 @@ def _validate_artifact(
         if isinstance(payload, (list, dict)):
             facts["item_count"] = len(payload)
         if isinstance(payload, dict):
-            facts["top_level_keys"] = sorted(str(key) for key in payload)[:100]
+            facts["top_level_keys"] = [
+                str(key)[:96]
+                for key in sorted(payload, key=lambda item: str(item))[:100]
+            ]
         return ExploratoryArtifactEvidence(
             artifact_id=ref.artifact_id,
             kind=ref.kind,

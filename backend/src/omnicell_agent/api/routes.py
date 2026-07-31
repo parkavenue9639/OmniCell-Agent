@@ -153,7 +153,8 @@ async def get_readiness(
     response_model=MemorySettingsRead,
     operation_id="getMemorySettings",
 )
-async def get_memory_settings(service: Service):
+async def get_memory_settings(service: Service, response: Response):
+    _disable_memory_response_caching(response)
     return await service.get_memory_settings()
 
 
@@ -168,6 +169,7 @@ async def update_memory_settings(
     service: Service,
 ):
     return await service.update_memory_settings(
+        expected_version=body.expected_version,
         use_memory=body.use_memory,
         generate_candidates=body.generate_candidates,
         enable_agent_tools=body.enable_agent_tools,
@@ -187,6 +189,7 @@ async def decide_memory_provider_consent(
     return await service.decide_memory_provider_consent(
         decision=body.decision,
         statement_version=body.statement_version,
+        expected_version=body.expected_version,
     )
 
 
@@ -422,7 +425,12 @@ async def get_run(run_id: UUID, service: Service):
     operation_id="getRunMemoryContext",
     responses=_error_responses(404),
 )
-async def get_run_memory_context(run_id: UUID, service: Service):
+async def get_run_memory_context(
+    run_id: UUID,
+    service: Service,
+    response: Response,
+):
+    _disable_memory_response_caching(response)
     return await service.get_run_memory_context(run_id)
 
 

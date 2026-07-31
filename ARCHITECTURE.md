@@ -7,7 +7,7 @@
 | 文档状态 | 生效中的架构基线 |
 | 所在分支 | `codex/cross-session-memory` |
 | 当前阶段 | Phase 23：科研证据闭环与结果一致性，已完成 |
-| 最近更新 | 2026-07-30 |
+| 最近更新 | 2026-07-31 |
 | 适用范围 | 单机科研原型架构重构 |
 
 本文档是 OmniCell-Agent 本轮重构的唯一架构设计基线，用于约束系统边界、职责划分、实施顺序与完成标准。本文档有意避免类、函数、接口地址等代码级设计，使具体实现可以在不偏离系统架构的前提下演进。
@@ -809,10 +809,12 @@ Frontend 使用最近已应用的 sequence 发起重连。Backend 先重放已�
 - 注释结果记录每个 cluster 的 validator 状态，验证失败、证据不支持和 marker 覆盖缺口均强制进入人工复核；顶层只把启发式结果作为方法约束下的推断，不能升级为已验证身份；
 - 领域 Tool 的有界科学事实进入当前 Run `tool_evidence`，通过瞬态 Hook 与历史消息、Memory 和 stdout 分离。自然回复与 `finish_task` 共用执行状态、数量、Artifact 和证据等级对账；冲突候选不会发出 `message.completed`，有界修正耗尽后只发布 backend 根据已验证事实生成的保守结果；
 - 探索性分析的每次执行或修复使用独立 attempt 目录，最终 Artifact 集合只允许成功目录。Backend 为 marker、H5AD、图像、JSON、表格、文本和未知文件生成分级结果清单；只有 marker 契约和 H5AD 形状等独立复核事实属于科学级，结构可读的通用产物保持为结构证据，未知文件保持非权威草稿。未完全验证的探索结果不能自动对账显式计划步骤；
-- 确定性 Agent、Capability、核心行为和科学反例定向回归为 208 passed、2 skipped；当前完整 backend 为 569 passed、53 skipped；真实 PostgreSQL/OrbStack 非真实 LLM 选择集为 50 passed、1 skipped，真实 normalize→cluster→marker Docker 链为 1 passed。Frontend Vitest 为 13 files/77 tests，契约漂移检查、TypeScript 与 production build通过，隔离 Chromium mock 为 7 passed；
+- 确定性 Agent、Capability、核心行为和科学反例定向回归为 208 passed、2 skipped；当前完整 backend 为 576 passed、53 skipped；真实 PostgreSQL/OrbStack 非真实 LLM 选择集为 50 passed、1 skipped，真实 normalize→cluster→marker Docker 链为 1 passed。Frontend Vitest 为 13 files/78 tests，契约漂移检查、TypeScript 与 production build通过，隔离 Chromium mock 为 7 passed；
 - 真实 React→FastAPI→PostgreSQL/checkpointer→SSE→OrbStack Docker 产品闭环为 5 passed。科研用例上传真实 H5AD 后执行归一化，受控模型故意把 `executed` 错报为 `reused`；错误候选未进入前端，修正事实在刷新后恢复，临时数据库 schema 已清理。`compileall` 与 `git diff --check` 通过；
-- 首轮独立只读复审发现探索目标未绑定验收器及逐簇映射未完整对账、陈旧 AnnData metadata 可误解锁复用、annotation 缺失 selection 时错误宣称覆盖完整、自然语言窄正则漏过常见数量改写，以及 marker 非有限值逃逸，共 P1×4、P2×1。当前实现已增加类型化探索验收目标、完整 count/proportion 映射对账、metadata 与矩阵/lineage 联合判定、annotation selection 强制门禁、backend 权威科学终答渲染及 marker 有限性和范围约束；修复复审进一步发现 `finish_task.final_response` 虽未公开但仍先进入 checkpoint 的 P1，当前 reasoning 节点已在持久化前同时清除伴随文本并把该参数替换为固定 backend 占位，Tool 只消费 evidence identity 与 limitations；对应 checkpoint 反例已通过，等待最终复审；
+- 首轮独立只读复审发现探索目标未绑定验收器及逐簇映射未完整对账、陈旧 AnnData metadata 可误解锁复用、annotation 缺失 selection 时错误宣称覆盖完整、自然语言窄正则漏过常见数量改写，以及 marker 非有限值逃逸，共 P1×4、P2×1。当前实现已增加类型化探索验收目标、完整 count/proportion 映射对账、metadata 与矩阵/lineage 联合判定、annotation selection 强制门禁、backend 权威科学终答渲染及 marker 有限性和范围约束；修复复审进一步发现 `finish_task.final_response` 虽未公开但仍先进入 checkpoint 的 P1，当前 reasoning 节点已在持久化前同时清除伴随文本并把该参数替换为固定 backend 占位，Tool 只消费 evidence identity 与 limitations；对应 checkpoint 反例已通过，并已纳入最终复审范围；
+- PR #4 门禁 review 的本地复核又确认并修复了探索 marker 行未逐项对账 selection、standalone PCA 仅信任陈旧 metadata、探索 attempt 目录未由可信控制面预建、Agent 候选原文 hash 无法精确重放、annotation coverage 附录掩盖空引擎报告及宽 JSON key 越过 facts 边界等问题。Memory 设置与 consent 现在通过公开版本号进行乐观并发，正文相关 GET 使用 `no-store`；Frontend 同步携带版本并禁止纠正已撤销记忆。新增反例包含在 146 passed 定向回归中，完整 backend、Frontend、OpenAPI 生成与漂移检查、TypeScript、production build、`compileall`、CSS 对比度和 `git diff --check` 均通过；GitHub review thread 状态不作为本地实现完成证据；
 - `AGENTS.md` 自闭环已沉淀科学完成分层、backend 权威终答、探索类型化验收与完整投影对账规则。最终实现候选以 baseline `9a1c9bf2a13a6c4293a1f3a00aee8cd61f8045bb` 与 tracked binary diff `897c18da87a0d7ca41f87d8544b6a61d3b07a07bb8b518548f2e609bbb560179` 冻结；独立 Checker 复跑真实 reasoning→`finish_task` checkpoint 链后 PASS，首轮 P1×4/P2×1 和修复复审 P1 全部 CLOSED，最终 P0-P3 均为 0。
+- 已评估本轮 `AGENTS.md` 自闭环：上述修复均是既有科学证据、Memory identity、契约一致性和失败关闭规则的具体落实，没有形成新的长期仓库规则，因此无需更新 `AGENTS.md`。
 
 完成门槛：任何未验证、相互矛盾或来源不明的科学结果均不能成为 completed evidence；归一化、聚类和 marker 的实际输入空间、执行状态、参数及输出状态可复查且相互一致；探索产物的关键数量、比例、cluster 集合和跨文件投影通过独立校验；注释验证异常和证据不支持始终进入人工复核；模型故意错报执行状态、数量、Artifact 或证据等级时，错误候选不会产生公共完成消息；小型真实数据、受控模型、当前完整 backend 回归和至少一条真实 React→FastAPI→PostgreSQL/checkpointer→SSE→Docker 科研链路通过。
 
@@ -845,7 +847,7 @@ Frontend 使用最近已应用的 sequence 发起重连。Backend 先重放已�
 | 20：跨会话记忆交互收敛 | 已完成 | Frontend 已收敛为一个跨会话记忆总开关和一次简短 provider 授权，普通消息按全部内部门禁自动提交 `default/off`，不再暴露逐 Run 模式或精确版本选择；自然语言提议与遗忘请求在时间线显示来自受控 Memory API 的 280 字有界正文预览并可就地确认，确认后按当前资源状态更新为已记住、已忘记、已清除或已失效。管理面隐藏稳定键、hash 和三门禁，purged tombstone 不占已保存数量与主列表，只在无正文的折叠记录中保留。Live SSE 与 replay 共用 proposal 刷新触发器，刷新后仍可恢复确认入口。Frontend Vitest 13 files/73 tests、契约漂移检查、typecheck、production build、隔离 Chromium mock 7 tests、真实 React→FastAPI→PostgreSQL/checkpointer→SSE 4 tests 均通过，临时 schema 已清理；真实本机页面 conversation `f573b2a0` 提议并确认记忆，conversation `65cbe450` 的 Run `b70c11ff` 自动召回 1 条记忆且无需模式选择，测试记忆随后彻底删除。独立只读复审提出的历史卡片假待确认、盲确认和 replay 列表竞态三项均已关闭，无 OPEN 项；`AGENTS.md` 已沉淀单开关、自动模式和自然语言主入口规则 | 2026-07-26 |
 | 21：主动记忆提议与语义遗忘 | 已完成 | “记住/忘记”已从关键词口令收敛为通用语义：Agent 可对用户单独表达的稳定偏好、用户事实和项目背景主动创建待确认候选，对明确撤销或替换语义发起确认式 forget；候选只接受 user message identity、完整保存原文、每 Run 最多一条，混合当前任务、一次性要求、敏感推断、当前科学结论与闲聊均保持 fail-closed。默认 backend 520 passed/52 skipped，真实 PostgreSQL 3 passed；frontend Vitest 13 files/73 tests、contracts/typecheck/build、mock Chromium 7 tests、真实全栈 4 tests 通过。真实模型无关键词主动提议 Run `8d8ce693`、语义撤销 Run `335202b7`、一次性负例 Run `db7603b0` 均符合预期；混合消息首轮失败 Run `8f5b3c7a` 驱动原子性门禁强化并清除测试候选，复测 Run `c75acf98` 为 0 Task/0 Tool/0 candidate。独立 Checker 的 P2 已 CLOSED，最终 P0-P3 为 0；`AGENTS.md` 已完成自闭环 | 2026-07-26 |
 | 22：记忆质量、交互与验证闭环 | 已完成 | 单消息候选、原文保真、提示策略单一来源、专用不可重试错误、表驱动 harness、PG 并发门槛和前端知情确认/卡片级命令状态已实现；Backend 579 passed/13 skipped、Frontend 77 tests、mock 7 tests、真实全栈 4 tests、构建/契约/compileall/diff 均通过；独立 Checker 首轮两个 P2 修复后复审 PASS，最终 P0-P3 与阻断性 UNKNOWN 为 0 | 2026-07-27 |
-| 23：科研证据闭环与结果一致性 | 已完成 | 科学状态与 provenance、marker/annotation fail-close、当前 Run evidence、backend 权威终答、探索 attempt 隔离、类型化目标验收和分级结果清单均已实现；首轮 Checker 的 P1×4、P2×1 与修复复审的 checkpoint P1 已修复并加入反例。Maker 验证为定向 208 passed/2 skipped、完整 backend 569 passed/53 skipped、真实 PostgreSQL/OrbStack 50 passed/1 skipped、真实原子 Docker 链 1 passed、frontend 77 tests、mock Chromium 7 passed、真实科研产品闭环 5 passed，compileall/diff 通过。最终实现快照经独立 Checker PASS，全部 finding CLOSED，P0-P3 均为 0；`AGENTS.md` 自闭环已完成 | 2026-07-30 |
+| 23：科研证据闭环与结果一致性 | 已完成 | 科学状态与 provenance、marker/annotation fail-close、当前 Run evidence、backend 权威终答、探索 attempt 隔离、类型化目标验收和分级结果清单均已实现；首轮 Checker 的 P1×4、P2×1 与修复复审的 checkpoint P1 已修复并加入反例。PR #4 门禁 review 的本地复核进一步收紧探索 marker 逐行验证、PCA metadata/矩阵联合判断、attempt 目录预建、Memory 原文 identity 重放、annotation 空报告、JSON facts 边界与设置乐观并发。当前验证为定向 146 passed、完整 backend 576 passed/53 skipped、frontend 13 files/78 tests、mock Chromium 7 passed，OpenAPI 生成与漂移检查、TypeScript、production build、compileall/diff 通过；历史最终快照的独立 Checker 结论保持不变，当前 GitHub review thread 状态不作为本地完成证据；本轮 `AGENTS.md` 自闭环已评估，无需更新 | 2026-07-31 |
 
 ### 进度更新规则
 

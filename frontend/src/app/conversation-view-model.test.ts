@@ -527,4 +527,45 @@ describe("conversation event diagnostics", () => {
     }
     expect(JSON.stringify(memoryItems)).not.toContain("记忆正文");
   });
+
+  it("does not offer correction for an already revoked memory", () => {
+    const model = buildConversationViewModel({
+      loading: false,
+      conversations: [],
+      artifacts: [],
+      reviews: [],
+      memory: {
+        loading: false,
+        commandsPending: false,
+        items: [
+          {
+            schema_version: 1,
+            memory_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4",
+            scope_key: "local-default",
+            stable_key: "response.language",
+            kind: "response_preference",
+            status: "revoked",
+            current_version: 2,
+            version_id: "cccccccc-cccc-4ccc-8ccc-ccccccccccc4",
+            content_sha256: "a".repeat(64),
+            content: "回答时优先使用中文。",
+            dataset_scope: null,
+            source: null,
+            expires_at: null,
+            created_at: "2026-07-26T08:00:00Z",
+            updated_at: "2026-07-26T08:03:00Z",
+          },
+        ],
+      },
+      pending: {
+        createConversation: false,
+        uploadDataset: false,
+        submitRun: false,
+        cancelRun: false,
+      },
+    });
+
+    expect(model.memory.items[0]?.canCorrect).toBe(false);
+    expect(model.memory.items[0]?.canPurge).toBe(true);
+  });
 });

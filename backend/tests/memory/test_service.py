@@ -15,7 +15,11 @@ from omnicell_agent.memory.errors import (
     MemorySuppressedError,
 )
 from omnicell_agent.memory.service import MemoryService
-from omnicell_agent.memory.types import MemoryKind, MemoryStatus
+from omnicell_agent.memory.types import (
+    MemoryKind,
+    MemorySelectionReason,
+    MemoryStatus,
+)
 from omnicell_agent.persistence.models import RunMemorySnapshot
 
 from ._fake_store import FakeRepositories, NOW, unit_of_work_factory
@@ -412,6 +416,59 @@ async def test_agent_proposal_is_attempt_fenced_and_idempotent_after_disable() -
     assert replay.version_id == first.version_id
     stored = repositories.memory_proposals.rows[(run_id, "proposal-1")]
     assert "content" not in stored.memory_identity
+
+
+@pytest.mark.asyncio
+async def test_agent_proposal_preserves_exact_source_across_retrieval() -> None:
+    repositories = FakeRepositories()
+    service = MemoryService(unit_of_work_factory(repositories), clock=lambda: NOW)
+    await service.get_settings()
+    await service.update_settings(
+        generation_enabled=True,
+        tools_enabled=True,
+        expected_version=1,
+    )
+    run_id, message_id = uuid4(), uuid4()
+    source = "  这个项目使用 Cafe\u0301 和本地 PostgreSQL。\n"
+    repositories.runs.rows[run_id] = SimpleNamespace(
+        id=run_id,
+        conversation_id=uuid4(),
+        worker_id="worker-1",
+        attempt=1,
+        status="running",
+        lease_expires_at=NOW + timedelta(minutes=5),
+        request_payload={"goal": "记录项目背景"},
+    )
+    repositories.events.rows[run_id] = [
+        SimpleNamespace(
+            event_type="message.completed",
+            payload={
+                "message_id": str(message_id),
+                "role": "user",
+                "content": source,
+            },
+        )
+    ]
+
+    identity = await service.propose_from_run(
+        run_id=run_id,
+        worker_id="worker-1",
+        expected_attempt=1,
+        tool_call_id="proposal-exact-source",
+        kind=MemoryKind.PROJECT_CONTEXT,
+        source_message_id=message_id,
+    )
+    await service.approve_memory(identity.item_id, expected_version=1)
+
+    candidates = await service._active_candidates(  # noqa: SLF001
+        repositories,
+        kinds=(MemoryKind.PROJECT_CONTEXT,),
+        selection_reason=MemorySelectionReason.TOOL_SEARCH,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].content == source
+    assert candidates[0].identity.content_sha256 == identity.content_sha256
 
 
 @pytest.mark.asyncio

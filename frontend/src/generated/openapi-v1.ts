@@ -1525,6 +1525,8 @@ export interface components {
              * @enum {string}
              */
             decision: "grant" | "revoke";
+            /** Expected Version */
+            expected_version: number;
             /**
              * Statement Version
              * @constant
@@ -1688,11 +1690,15 @@ export interface components {
             updated_at: string;
             /** Use Memory */
             use_memory: boolean;
+            /** Version */
+            version: number;
         };
         /** MemorySettingsUpdateRequest */
         MemorySettingsUpdateRequest: {
             /** Enable Agent Tools */
             enable_agent_tools?: boolean | null;
+            /** Expected Version */
+            expected_version: number;
             /** Generate Candidates */
             generate_candidates?: boolean | null;
             /** Use Memory */

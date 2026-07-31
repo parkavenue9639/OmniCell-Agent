@@ -302,6 +302,18 @@ class _SearchMemoryInput(BaseModel):
     limit: int = Field(default=5, ge=1, le=10)
 
 
+class _MemoryResourceProjection(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    item_id: UUID
+    version_id: UUID
+    version_number: int = Field(ge=1)
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    kind: MemoryKindLiteral
+    source_kind: Literal["explicit", "proposed", "corrected"]
+    selection_reason: Literal["default", "selected", "tool_search"]
+
+
 class _ProposeMemoryInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -494,13 +506,32 @@ class _OmniCellToolComposition:
         assert self._memory_tools is not None
         request = _SearchMemoryInput.model_validate(invocation.arguments)
         try:
-            identities = await self._memory_tools.search(
+            raw_identities = await self._memory_tools.search(
                 kinds=tuple(request.kinds),
                 limit=request.limit,
                 tool_call_id=invocation.tool_call_id,
             )
         except AgentMemoryControlError as exc:
             return self._memory_failure(invocation, exc)
+        try:
+            identities = tuple(
+                _MemoryResourceProjection.model_validate(item).model_dump(
+                    mode="json"
+                )
+                for item in raw_identities
+            )
+        except ValueError:
+            return self._memory_failure(
+                invocation,
+                AgentMemoryControlError(
+                    error_code="memory_control_contract_invalid",
+                    summary="Memory control adapter 返回了无效 identity。",
+                    retryable=False,
+                    recovery_hint=(
+                        "停止使用本次搜索结果并检查 backend Memory adapter。"
+                    ),
+                ),
+            )
         existing = [
             dict(item)
             for item in invocation.state.get("loaded_memory_resources", [])
@@ -519,22 +550,7 @@ class _OmniCellToolComposition:
             merged.append(item)
             if len(merged) >= 32:
                 break
-        public_identities = [
-            {
-                key: item[key]
-                for key in (
-                    "item_id",
-                    "version_id",
-                    "version_number",
-                    "content_sha256",
-                    "kind",
-                    "source_kind",
-                    "selection_reason",
-                )
-                if key in item
-            }
-            for item in identities
-        ]
+        public_identities = list(identities)
         await self._observer.emit(
             "memory.search_completed",
             {

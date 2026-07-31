@@ -212,6 +212,19 @@ def _session(tmp_path: Path, backend: _FakeBackend) -> python_session.LocalDocke
     )
 
 
+def test_session_ensures_workspace_directory_through_backend(
+    tmp_path: Path,
+) -> None:
+    backend = _FakeBackend(tmp_path, [])
+    session = _session(tmp_path, backend)
+    session.start()
+
+    session.ensure_dir("artifacts/attempt-00-00")
+
+    assert backend.ensure_dir_calls[-1] == "artifacts/attempt-00-00"
+    session.cleanup()
+
+
 def test_python_session_uses_per_call_returncode_and_cleans_requests(tmp_path: Path) -> None:
     forged_frames = (
         b"__FORGED_CONTROL_FRAME__eyJzdGF0dXMiOiJlcnJvciJ9\n"

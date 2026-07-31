@@ -263,6 +263,10 @@ class CellAnnotationCapability:
 
         cluster_annotations = dict(final_state.get("cluster_annotations") or {})
         final_report = str(final_state.get("final_report") or "")
+        if not final_report.strip() or final_report.startswith("Error:"):
+            raise CapabilityExecutionError(
+                "细胞类型注释未生成有效 annotation report"
+            )
         actual_clusters = set(cluster_annotations)
         unexpected_clusters = actual_clusters - expected_clusters
         if unexpected_clusters:
@@ -310,8 +314,6 @@ class CellAnnotationCapability:
                     )
                 )
             )
-        if not final_report.strip() or final_report.startswith("Error:"):
-            raise CapabilityExecutionError("细胞类型注释未生成有效 annotation report")
         for annotation in cluster_annotations.values():
             if not isinstance(annotation, Mapping):
                 raise TypeError("cluster annotation 必须是 mapping")

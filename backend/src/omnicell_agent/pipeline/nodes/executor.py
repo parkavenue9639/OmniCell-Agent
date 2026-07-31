@@ -153,6 +153,7 @@ def run_executor(state: ExploratoryAnalysisState) -> dict:
             f"{base_output_root}/attempt-{current_index:02d}-{retry_count:02d}"
         )
         marker_table_path = f"{artifact_output_root}/markers.json"
+        session.ensure_dir(artifact_output_root)
         tool_parameters: dict[str, object] = {}
         if current_index < len(plan_steps):
             current_step = plan_steps[current_index]

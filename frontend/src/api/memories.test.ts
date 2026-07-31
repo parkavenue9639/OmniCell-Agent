@@ -121,6 +121,7 @@ describe("memory API", () => {
         return json({
           schema_version: 1,
           scope_key: "local-default",
+          version: 2,
           use_memory: false,
           generate_candidates: false,
           enable_agent_tools: false,
@@ -142,6 +143,7 @@ describe("memory API", () => {
         decision: "grant",
         statement_version: "memory-provider-v1",
         confirmed: true,
+        expected_version: 1,
       },
       { client },
     );
@@ -155,6 +157,7 @@ describe("memory API", () => {
       decision: "grant",
       statement_version: "memory-provider-v1",
       confirmed: true,
+      expected_version: 1,
     });
     expect(new URL(requests[1]!.url).pathname).toBe(
       `/api/v1/memories/${memory.memory_id}/purge`,

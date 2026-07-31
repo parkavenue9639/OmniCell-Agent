@@ -243,6 +243,7 @@ class PostgresMemoryRuntime:
                     kind=MemoryKind(item.kind),
                     dataset_scope=version.dataset_scope,
                     provenance=version.source_refs,
+                    preserve_original=True,
                 )
                 if (
                     validated.sha256 != version.sha256
@@ -555,6 +556,7 @@ class PostgresMemoryContextResolver:
                 kind=identity.kind,
                 dataset_scope=version.dataset_scope,
                 provenance=version.source_refs,
+                preserve_original=True,
             )
         except MemoryError:
             return None

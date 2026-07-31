@@ -1027,6 +1027,7 @@ class MemoryService:
                     kind=kind,
                     dataset_scope=version.dataset_scope,
                     provenance=version.source_refs,
+                    preserve_original=True,
                 )
             except MemoryError:
                 raise

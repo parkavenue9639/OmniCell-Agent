@@ -323,6 +323,7 @@ class ArtifactListResponse(VersionedApiModel):
 
 class MemorySettingsRead(VersionedApiModel):
     scope_key: Literal["local-default"] = "local-default"
+    version: int = Field(ge=1)
     use_memory: bool
     generate_candidates: bool
     enable_agent_tools: bool
@@ -337,6 +338,7 @@ class MemorySettingsRead(VersionedApiModel):
 
 
 class MemorySettingsUpdateRequest(ApiModel):
+    expected_version: int = Field(ge=1)
     use_memory: bool | None = None
     generate_candidates: bool | None = None
     enable_agent_tools: bool | None = None
@@ -356,6 +358,7 @@ class MemoryProviderConsentRequest(ApiModel):
     decision: Literal["grant", "revoke"]
     statement_version: Literal[MEMORY_PROVIDER_CONSENT_VERSION]
     confirmed: Literal[True]
+    expected_version: int = Field(ge=1)
 
 
 class MemorySourceRead(ApiModel):

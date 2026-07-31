@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +35,7 @@ from .contracts import (
     QualityControlRequest,
 )
 from .errors import CapabilityExecutionError, CapabilityInputError
+from .marker_validation import validate_marker_selection
 from .registry import CapabilityContext
 
 
@@ -443,39 +443,10 @@ def _validate_marker_evidence(
     selection = evidence.marker_selection
     if selection is None:
         raise CapabilityExecutionError("marker scientific evidence 缺失")
-    metadata_selection = marker_contract.metadata.get("selection")
-    if metadata_selection != selection.model_dump(mode="json"):
-        raise CapabilityExecutionError(
-            "marker contract metadata 与 scientific evidence 不一致"
-        )
-
-    counts: dict[str, int] = {}
-    reported = set(selection.reported_clusters)
-    for marker in marker_contract.markers:
-        if marker.cluster_id not in reported:
-            raise CapabilityExecutionError("marker 行引用了未报告 cluster")
-        if not all(
-            math.isfinite(value)
-            for value in (
-                marker.p_val,
-                marker.p_val_adj,
-                marker.log2FC,
-                marker.pct_1,
-                marker.pct_2,
-            )
-        ):
-            raise CapabilityExecutionError("marker 行包含非有限统计量")
-        if not 0 <= marker.p_val <= 1 or not 0 <= marker.p_val_adj <= 1:
-            raise CapabilityExecutionError("marker P 值超出 [0, 1]")
-        if marker.p_val_adj >= selection.adjusted_p_value_max:
-            raise CapabilityExecutionError("marker 行违反 adjusted p-value 阈值")
-        if marker.log2FC <= selection.min_log2_fold_change:
-            raise CapabilityExecutionError("marker 行违反 log2 fold-change 阈值")
-        if not 0 <= marker.pct_1 <= 1 or not 0 <= marker.pct_2 <= 1:
-            raise CapabilityExecutionError("marker 表达比例超出 [0, 1]")
-        counts[marker.cluster_id] = counts.get(marker.cluster_id, 0) + 1
-    if counts != selection.selected_counts:
-        raise CapabilityExecutionError("marker 实际行数与 selected_counts 不一致")
+    try:
+        validate_marker_selection(marker_contract, selection)
+    except ValueError as exc:
+        raise CapabilityExecutionError(str(exc)) from exc
 
 
 def _render_atomic_code(

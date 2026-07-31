@@ -393,6 +393,69 @@ def test_annotation_routes_marker_coverage_gaps_to_manual_review(
     assert "no_threshold_hits" in report
 
 
+def test_annotation_does_not_turn_coverage_appendix_into_engine_report(
+    tmp_path: Path,
+) -> None:
+    context, store = _artifact_context(tmp_path / "conversation")
+    path = store.workspace / "inputs" / "omitted-only.json"
+    path.parent.mkdir(parents=True)
+    MarkerTableContract(
+        metadata={
+            "selection": {
+                "statistical_input": "adata.X",
+                "method": "wilcoxon",
+                "adjusted_p_value_max": 0.05,
+                "min_log2_fold_change": 1.0,
+                "top_n_per_cluster": 50,
+                "all_clusters": ["0", "1"],
+                "tested_clusters": ["0", "1"],
+                "reported_clusters": ["0"],
+                "omitted_clusters": {"1": "no_threshold_hits"},
+                "selected_counts": {"0": 1},
+                "marker_count": 1,
+                "thresholds_strict": True,
+            }
+        },
+        markers=[_marker("0", "IL7R", 0.01)],
+    ).save_to_json(path)
+    marker_ref = store.publish(
+        path,
+        kind="marker_table",
+        media_type="application/json",
+    )
+
+    class EmptyReportGraph:
+        def invoke(self, state):
+            return {
+                **state,
+                "cluster_annotations": {
+                    "0": {
+                        "general_type": "Immune cells",
+                        "sub_type": "T cells",
+                        "cs_score": 90.0,
+                        "validator_status": "supported",
+                        "flags": [],
+                    }
+                },
+                "final_report": "",
+            }
+
+    with pytest.raises(
+        CapabilityExecutionError,
+        match="有效 annotation report",
+    ):
+        CellAnnotationCapability(
+            graph_factory=EmptyReportGraph
+        ).invoke(
+            CellAnnotationRequest(
+                marker_table=marker_ref,
+                species="Human",
+                tissue="PBMC",
+            ),
+            context,
+        )
+
+
 def test_annotation_rejects_marker_table_without_selection_evidence(
     tmp_path: Path,
 ) -> None:

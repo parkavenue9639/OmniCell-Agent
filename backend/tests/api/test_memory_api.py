@@ -100,10 +100,12 @@ class _MemoryApiService:
     async def update_memory_settings(
         self,
         *,
+        expected_version: int,
         use_memory: bool | None,
         generate_candidates: bool | None,
         enable_agent_tools: bool | None,
     ) -> MemorySettingsRead:
+        assert expected_version == 1
         return self._settings(
             use_memory=bool(use_memory),
             generate_candidates=bool(generate_candidates),
@@ -116,8 +118,10 @@ class _MemoryApiService:
         *,
         decision: str,
         statement_version: str,
+        expected_version: int,
     ) -> MemorySettingsRead:
         assert statement_version == "memory-provider-v1"
+        assert expected_version == 1
         return self._settings(consent=decision == "grant")
 
     async def list_memories(
@@ -204,6 +208,7 @@ class _MemoryApiService:
         consent: bool = False,
     ) -> MemorySettingsRead:
         return MemorySettingsRead(
+            version=1,
             use_memory=use_memory,
             generate_candidates=generate_candidates,
             enable_agent_tools=enable_agent_tools,
@@ -223,8 +228,23 @@ def test_memory_crud_routes_are_explicit_and_do_not_project_internal_fields() ->
 
     settings = client.get("/api/v1/memory/settings")
     assert settings.status_code == 200
+    assert "no-store" in settings.headers["cache-control"]
+    assert "private" in settings.headers["cache-control"]
     assert settings.json()["use_memory"] is False
     assert settings.json()["provider_consent_granted"] is False
+    updated = client.patch(
+        "/api/v1/memory/settings",
+        json={
+            "expected_version": 1,
+            "generate_candidates": True,
+        },
+    )
+    assert updated.status_code == 200
+    missing_version = client.patch(
+        "/api/v1/memory/settings",
+        json={"generate_candidates": True},
+    )
+    assert missing_version.status_code == 422
 
     consent = client.post(
         "/api/v1/memory/provider-consent",
@@ -232,6 +252,7 @@ def test_memory_crud_routes_are_explicit_and_do_not_project_internal_fields() ->
             "decision": "grant",
             "statement_version": "memory-provider-v1",
             "confirmed": True,
+            "expected_version": 1,
         },
     )
     assert consent.status_code == 200
@@ -242,6 +263,7 @@ def test_memory_crud_routes_are_explicit_and_do_not_project_internal_fields() ->
             "decision": "grant",
             "statement_version": "memory-provider-v0",
             "confirmed": True,
+            "expected_version": 1,
         },
     )
     assert stale_consent.status_code == 422
@@ -388,6 +410,8 @@ def test_run_memory_context_is_identity_only() -> None:
     response = client.get(f"/api/v1/runs/{service.run_id}/memory-context")
 
     assert response.status_code == 200
+    assert "no-store" in response.headers["cache-control"]
+    assert "private" in response.headers["cache-control"]
     payload = response.json()
     assert payload["mode"] == "selected"
     assert payload["outcome"] == "loaded"

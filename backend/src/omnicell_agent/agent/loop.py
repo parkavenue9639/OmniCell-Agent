@@ -728,8 +728,6 @@ class AgentExecution:
             return update
 
         final_response = _final_response_text(message)
-        completion_rejection = turn_context.completion_rejection
-        completion_fallback = turn_context.completion_fallback
         completion_replacement = turn_context.completion_replacement
         if completion_replacement:
             message_key = hashlib.sha256(
@@ -763,7 +761,6 @@ class AgentExecution:
             final_response
             and not _has_unresolved_plan(state)
             and not invalid_resource_locator
-            and not completion_rejection
         ):
             await self._observer.emit(
                 "message.completed",
@@ -790,12 +787,6 @@ class AgentExecution:
         if empty_count <= self._settings.max_empty_reprompts:
             reminder = (
                 (
-                    "当前候选回复与当前 Run 已验证科研证据冲突，尚未向用户发布。"
-                    f"冲突：{completion_rejection}。"
-                    "请依据 Tool 返回的执行状态、数量、artifact 和证据等级重新作答。"
-                )
-                if completion_rejection
-                else (
                     "最终回复包含内部资源定位符。请只引用 artifact_id 或"
                     "页面中的已登记产物，不要输出 workspace URI、宿主路径"
                     "或 backend 控制目录；请重新作答。"
@@ -816,46 +807,6 @@ class AgentExecution:
                 message,
                 SystemMessage(content=reminder),
             ]
-            return update
-        if completion_rejection and completion_fallback:
-            fallback_key = hashlib.sha256(
-                json.dumps(
-                    {
-                        "run_id": str(self.run_id),
-                        "turn": next_turn,
-                        "fallback": completion_fallback,
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                ).encode("utf-8")
-            ).hexdigest()[:32]
-            fallback_message = AIMessage(
-                id=fallback_key,
-                content=completion_fallback,
-                response_metadata={
-                    "omnicell_run_id": str(self.run_id),
-                    "omnicell_deterministic_fallback": True,
-                },
-            )
-            await self._observer.emit(
-                "message.completed",
-                {
-                    "role": "assistant",
-                    "content": completion_fallback,
-                    "has_tool_calls": False,
-                    "turn": next_turn,
-                },
-                dedupe_key=f"message:{fallback_key}",
-            )
-            update.update(
-                {
-                    "messages": [message, fallback_message],
-                    "consecutive_no_tool": 0,
-                    "task_status": TaskStatus.COMPLETED.value,
-                    "outcome_status": AgentOutcomeStatus.COMPLETED.value,
-                    "final_response": completion_fallback,
-                }
-            )
             return update
         update.update(
             {

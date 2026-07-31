@@ -3483,6 +3483,86 @@ class IdentityOnlyMemoryPort:
         }
 
 
+class PartialIdentityMemoryPort(IdentityOnlyMemoryPort):
+    async def search(self, **kwargs):
+        del kwargs
+        identity = self._identity(selection_reason="tool_search")
+        identity.pop("selection_reason")
+        return (identity,)
+
+
+class SingleMemorySearchModel:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def bind_tools(self, tools):
+        assert "search_memory" in {
+            tool["function"]["name"] for tool in tools
+        }
+        return self
+
+    async def ainvoke(self, messages):
+        del messages
+        self.calls += 1
+        if self.calls == 1:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "search_memory",
+                        "args": {
+                            "kinds": ["project_context"],
+                            "limit": 1,
+                        },
+                        "id": "partial-memory-search",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        return AIMessage(content="本次记忆搜索结果不可用。")
+
+
+@pytest.mark.asyncio
+async def test_memory_search_rejects_partial_adapter_identity(
+    tmp_path,
+) -> None:
+    port = PartialIdentityMemoryPort()
+    model = SingleMemorySearchModel()
+    conversation_id = uuid4()
+    execution = AgentLoopFactory(
+        _layer(EchoCapability()),
+        model_factory=lambda: model,
+        capability_invoker_factory=CooperativeInProcessCapabilityInvoker,
+    ).create(
+        run_id=uuid4(),
+        conversation_id=conversation_id,
+        capability_context=CapabilityContext(
+            conversation_id=conversation_id,
+            artifacts=ConversationArtifactStore(
+                conversation_id,
+                tmp_path / str(conversation_id),
+            ),
+        ),
+        checkpointer=InMemorySaver(),
+        memory_tools=port,
+    )
+
+    outcome = await execution.start("查找项目记忆")
+    snapshot = await execution._graph.aget_state(  # noqa: SLF001
+        execution._graph_config  # noqa: SLF001
+    )
+    tool_message = next(
+        message
+        for message in snapshot.values["messages"]
+        if isinstance(message, ToolMessage)
+        and message.tool_call_id == "partial-memory-search"
+    )
+
+    assert outcome.status == AgentOutcomeStatus.COMPLETED
+    assert "memory_control_contract_invalid" in str(tool_message.content)
+    assert snapshot.values["loaded_memory_resources"] == []
+
+
 class FenceLosingMemoryPort:
     def __init__(self) -> None:
         self.item_id = uuid4()

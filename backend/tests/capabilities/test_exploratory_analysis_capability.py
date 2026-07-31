@@ -463,6 +463,10 @@ def test_exploratory_analysis_preserves_controlled_engine_contract(
         def start(self) -> None:
             self.start_calls += 1
 
+        def ensure_dir(self, path: str) -> None:
+            relative = path.removeprefix("/app/data/")
+            (self.workspace / relative).mkdir(parents=True, exist_ok=True)
+
         def execute_code(self, code: str) -> dict[str, Any]:
             self.executed_code.append(code)
             if code.startswith("raw_data_path = "):

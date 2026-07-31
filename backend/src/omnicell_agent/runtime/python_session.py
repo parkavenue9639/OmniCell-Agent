@@ -257,6 +257,22 @@ class LocalDockerPythonSession:
                 self._poisoned = True
                 raise
 
+    def ensure_dir(self, path: str) -> None:
+        """Create a workspace-scoped directory through the trusted control plane."""
+
+        with self._state_lock:
+            if not self._started:
+                raise RuntimeError("Python session 尚未启动")
+            if self._poisoned:
+                raise RuntimeError(
+                    "Python session 已 poisoned，拒绝复用不可信容器状态"
+                )
+            try:
+                self._bridge.run(self._backend.ensure_dir(path))
+            except BaseException:
+                self._poisoned = True
+                raise
+
     def cancel_active(self) -> bool:
         """Thread-safe bridge used by product-level cancellation propagation."""
 

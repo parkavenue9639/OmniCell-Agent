@@ -179,6 +179,7 @@ def project_artifact(artifact: Artifact) -> ArtifactRead:
 def project_memory_settings(settings: MemorySettingsState) -> MemorySettingsRead:
     return MemorySettingsRead(
         scope_key=settings.scope_key,
+        version=settings.version,
         use_memory=settings.use_enabled,
         generate_candidates=settings.generation_enabled,
         enable_agent_tools=settings.tools_enabled,
@@ -281,6 +282,7 @@ class ApiService:
     async def update_memory_settings(
         self,
         *,
+        expected_version: int,
         use_memory: bool | None,
         generate_candidates: bool | None,
         enable_agent_tools: bool | None,
@@ -290,6 +292,7 @@ class ApiService:
                 use_enabled=use_memory,
                 generation_enabled=generate_candidates,
                 tools_enabled=enable_agent_tools,
+                expected_version=expected_version,
             )
         )
 
@@ -298,12 +301,14 @@ class ApiService:
         *,
         decision: str,
         statement_version: str,
+        expected_version: int,
     ) -> MemorySettingsRead:
         return project_memory_settings(
             await self._memory().set_provider_consent(
                 granted=decision == "grant",
                 statement_version=statement_version,
                 confirmed=True,
+                expected_version=expected_version,
             )
         )
 
