@@ -50,8 +50,30 @@ def _publish_contract(
     markers: list[MarkerGene],
 ):
     path = store.workspace / "inputs" / "markers.json"
+    selected_counts: dict[str, int] = {}
+    for marker in markers:
+        selected_counts[marker.cluster_id] = (
+            selected_counts.get(marker.cluster_id, 0) + 1
+        )
+    clusters = sorted(selected_counts)
     MarkerTableContract(
-        metadata={"baseline": "cell-annotation-capability-v1"},
+        metadata={
+            "baseline": "cell-annotation-capability-v1",
+            "selection": {
+                "statistical_input": "adata.X",
+                "method": "wilcoxon",
+                "adjusted_p_value_max": 1.0,
+                "min_log2_fold_change": 0.0,
+                "top_n_per_cluster": 500,
+                "all_clusters": clusters,
+                "tested_clusters": clusters,
+                "reported_clusters": clusters,
+                "omitted_clusters": {},
+                "selected_counts": selected_counts,
+                "marker_count": len(markers),
+                "thresholds_strict": True,
+            },
+        },
         markers=markers,
     ).save_to_json(path)
     return store.publish(
@@ -133,24 +155,28 @@ def test_workflow_projects_input_and_publishes_full_outputs(tmp_path: Path) -> N
             "sub_type": "CD4 T cells",
             "cs_score": 95.0,
             "flags": [],
+            "validator_status": "supported",
         },
         "1": {
             "general_type": "Immune cells",
             "sub_type": "Rare cells",
             "cs_score": 59.0,
             "flags": [],
+            "validator_status": "supported",
         },
         "2": {
             "general_type": "Immune cells",
             "sub_type": "B cells",
             "cs_score": 90.0,
             "flags": ["cross_cluster_outlier"],
+            "validator_status": "supported",
         },
         "3": {
             "general_type": "Immune cells",
             "sub_type": "Ambiguous cells",
             "cs_score": 90.0,
             "flags": ["needs_review"],
+            "validator_status": "supported",
         },
     }
     report = "# Deep Annotation Report\n\nComplete."
@@ -189,6 +215,8 @@ def test_workflow_projects_input_and_publishes_full_outputs(tmp_path: Path) -> N
     assert result.source_marker_table == marker_ref
     assert result.cluster_count == 4
     assert result.manual_review_count == 3
+    assert result.marker_coverage_complete is True
+    assert result.omitted_marker_cluster_count == 0
     assert [
         summary.model_dump(mode="json")
         for summary in result.cluster_summaries
@@ -199,6 +227,7 @@ def test_workflow_projects_input_and_publishes_full_outputs(tmp_path: Path) -> N
             "sub_type": annotation["sub_type"],
             "confidence_score": annotation["cs_score"],
             "flags": annotation["flags"],
+            "validator_status": annotation["validator_status"],
             "requires_manual_review": (
                 annotation["cs_score"] < 75
                 or bool(annotation["flags"])
@@ -283,6 +312,178 @@ def test_annotation_capability_preserves_review_projection(
 
     assert payload["cluster_annotations"] == graph_projection["cluster_annotations"]
     assert result.manual_review_count == 1
+
+
+def test_annotation_routes_marker_coverage_gaps_to_manual_review(
+    tmp_path: Path,
+) -> None:
+    context, store = _artifact_context(tmp_path / "conversation")
+    path = store.workspace / "inputs" / "strict-markers.json"
+    path.parent.mkdir(parents=True)
+    MarkerTableContract(
+        metadata={
+            "selection": {
+                "statistical_input": "adata.X",
+                "method": "wilcoxon",
+                "adjusted_p_value_max": 0.05,
+                "min_log2_fold_change": 1.0,
+                "top_n_per_cluster": 50,
+                "all_clusters": ["0", "1"],
+                "tested_clusters": ["0", "1"],
+                "reported_clusters": ["0"],
+                "omitted_clusters": {"1": "no_threshold_hits"},
+                "selected_counts": {"0": 1},
+                "marker_count": 1,
+                "thresholds_strict": True,
+            }
+        },
+        markers=[_marker("0", "IL7R", 0.01)],
+    ).save_to_json(path)
+    marker_ref = store.publish(
+        path,
+        kind="marker_table",
+        media_type="application/json",
+    )
+
+    class CoverageAwareGraph:
+        def invoke(self, state):
+            return {
+                **state,
+                "cluster_annotations": {
+                    "0": {
+                        "general_type": "Immune cells",
+                        "sub_type": "T cells",
+                        "cs_score": 90.0,
+                        "validator_status": "supported",
+                        "flags": [],
+                    }
+                },
+                "final_report": "controlled annotation report",
+            }
+
+    result = CellAnnotationCapability(
+        graph_factory=CoverageAwareGraph
+    ).invoke(
+        CellAnnotationRequest(
+            marker_table=marker_ref,
+            species="Human",
+            tissue="PBMC",
+        ),
+        context,
+    )
+
+    assert result.cluster_count == 2
+    assert result.marker_coverage_complete is False
+    assert result.omitted_marker_cluster_count == 1
+    assert result.manual_review_count == 1
+    missing = next(
+        item
+        for item in result.cluster_summaries
+        if item.cluster_id == "1"
+    )
+    assert missing.sub_type == "Unknown"
+    assert missing.validator_status == "not_run"
+    assert missing.requires_manual_review is True
+    assert "marker_coverage_incomplete" in missing.flags
+    report = store.resolve(
+        result.report,
+        expected_kind="annotation_report",
+    ).read_text(encoding="utf-8")
+    assert "Marker coverage 未覆盖" in report
+    assert "no_threshold_hits" in report
+
+
+def test_annotation_does_not_turn_coverage_appendix_into_engine_report(
+    tmp_path: Path,
+) -> None:
+    context, store = _artifact_context(tmp_path / "conversation")
+    path = store.workspace / "inputs" / "omitted-only.json"
+    path.parent.mkdir(parents=True)
+    MarkerTableContract(
+        metadata={
+            "selection": {
+                "statistical_input": "adata.X",
+                "method": "wilcoxon",
+                "adjusted_p_value_max": 0.05,
+                "min_log2_fold_change": 1.0,
+                "top_n_per_cluster": 50,
+                "all_clusters": ["0", "1"],
+                "tested_clusters": ["0", "1"],
+                "reported_clusters": ["0"],
+                "omitted_clusters": {"1": "no_threshold_hits"},
+                "selected_counts": {"0": 1},
+                "marker_count": 1,
+                "thresholds_strict": True,
+            }
+        },
+        markers=[_marker("0", "IL7R", 0.01)],
+    ).save_to_json(path)
+    marker_ref = store.publish(
+        path,
+        kind="marker_table",
+        media_type="application/json",
+    )
+
+    class EmptyReportGraph:
+        def invoke(self, state):
+            return {
+                **state,
+                "cluster_annotations": {
+                    "0": {
+                        "general_type": "Immune cells",
+                        "sub_type": "T cells",
+                        "cs_score": 90.0,
+                        "validator_status": "supported",
+                        "flags": [],
+                    }
+                },
+                "final_report": "",
+            }
+
+    with pytest.raises(
+        CapabilityExecutionError,
+        match="有效 annotation report",
+    ):
+        CellAnnotationCapability(
+            graph_factory=EmptyReportGraph
+        ).invoke(
+            CellAnnotationRequest(
+                marker_table=marker_ref,
+                species="Human",
+                tissue="PBMC",
+            ),
+            context,
+        )
+
+
+def test_annotation_rejects_marker_table_without_selection_evidence(
+    tmp_path: Path,
+) -> None:
+    context, store = _artifact_context(tmp_path / "conversation")
+    path = store.workspace / "inputs" / "markers-without-selection.json"
+    path.parent.mkdir(parents=True)
+    MarkerTableContract(
+        metadata={},
+        markers=[_marker("0", "IL7R", 0.01)],
+    ).save_to_json(path)
+    marker_ref = store.publish(
+        path,
+        kind="marker_table",
+        media_type="application/json",
+    )
+
+    with pytest.raises(
+        CapabilityInputError,
+        match="selection evidence",
+    ):
+        CellAnnotationCapability(graph_factory=lambda: None).invoke(
+            CellAnnotationRequest(
+                marker_table=marker_ref,
+                species="Human",
+                tissue="PBMC",
+            ),
+            context,
+        )
 
 
 @pytest.mark.parametrize("payload", [b"not-json", b'{"metadata":{},"markers":[]}'])

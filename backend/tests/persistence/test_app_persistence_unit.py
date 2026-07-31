@@ -53,6 +53,15 @@ def test_application_metadata_is_schema_qualified_and_checkpoint_tables_are_excl
         "reviews",
         "artifacts",
         "checkpoint_anchors",
+        "memory_settings",
+        "memory_items",
+        "memory_versions",
+        "memory_suppressions",
+        "run_memory_snapshots",
+        "run_memory_inputs",
+        "run_memory_searches",
+        "run_memory_forget_intents",
+        "run_memory_proposals",
     }
     assert {table.name for table in Base.metadata.tables.values()} == expected
     assert {table.schema for table in Base.metadata.tables.values()} == {APP_SCHEMA}
@@ -85,6 +94,8 @@ def test_offline_migration_is_explicit_and_uses_application_version_schema(capsy
     assert f"CREATE TABLE {APP_SCHEMA}.checkpoint_anchors" in sql
     assert f"CREATE TABLE {APP_SCHEMA}.run_tasks" in sql
     assert f"CREATE TABLE {APP_SCHEMA}.reviews" in sql
+    assert f"CREATE TABLE {APP_SCHEMA}.memory_settings" in sql
+    assert f"CREATE TABLE {APP_SCHEMA}.run_memory_inputs" in sql
     assert "ck_runs_run_status" in sql
     assert "ck_run_tasks_run_task_status" in sql
     assert "ck_reviews_review_status" in sql
@@ -105,6 +116,7 @@ def test_packaged_alembic_resource_set_is_complete():
         "script.py.mako",
         "versions/20260722_0001_app_schema.py",
         "versions/20260722_0002_run_lifecycle.py",
+        "versions/20260726_0003_cross_conversation_memory.py",
     )
     assert all(root.joinpath(path).is_file() for path in expected)
 
@@ -125,13 +137,17 @@ def test_lifecycle_migration_downgrade_uses_symmetric_constraint_names(capsys):
 
 @pytest.mark.asyncio
 async def test_database_open_failure_does_not_publish_partial_lifecycle():
+    captured: dict[str, object] = {}
+
     def fail_engine_factory(*args, **kwargs):
+        captured.update(kwargs)
         raise RuntimeError("engine construction failed")
 
     database = ApplicationDatabase(Settings(), engine_factory=fail_engine_factory)
     with pytest.raises(RuntimeError, match="engine construction failed"):
         await database.open()
     assert database.is_open is False
+    assert captured["hide_parameters"] is True
     await database.close()
 
 

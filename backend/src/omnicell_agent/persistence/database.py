@@ -94,6 +94,7 @@ class ApplicationDatabase:
                 pool_size=pool_min,
                 max_overflow=pool_max - pool_min,
                 pool_pre_ping=True,
+                hide_parameters=True,
                 connect_args={
                     "connect_timeout": self._settings.connect_timeout_seconds
                 },

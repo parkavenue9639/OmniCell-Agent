@@ -8,7 +8,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 import pytest
-from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,6 +20,7 @@ from omnicell_agent.agent import (
     CooperativeInProcessCapabilityInvoker,
 )
 from omnicell_agent.agent.observer import AgentObserver
+from omnicell_agent.agent.memory import AgentMemoryControlFatalError
 from omnicell_agent.agent.resource_boundary import (
     RUNTIME_CONTROL_ROOT,
     contains_internal_resource_locator,
@@ -1021,6 +1022,215 @@ async def test_direct_reply_finishes_without_domain_capability(tmp_path) -> None
         event_type.startswith("capability.")
         for event_type, _, _ in observer.events
     )
+
+
+@pytest.mark.asyncio
+async def test_scientific_model_draft_is_replaced_by_authoritative_response(
+    tmp_path,
+) -> None:
+    artifact_id = str(uuid4())
+    scientific_evidence = {
+        "schema_version": 1,
+        "kind": "atomic_analysis",
+        "evidence_level": "validated_observation",
+        "capability": "cluster_cells",
+        "artifact_ids": [artifact_id],
+        "source_artifact_id": artifact_id,
+        "disposition": "reused",
+        "parameters": {"resolution": 1.0},
+        "random_seed": 0,
+        "input_state": {
+            "n_obs": 30,
+            "n_vars": 120,
+            "cluster_ids": ["0", "1", "2"],
+        },
+        "output_state": {
+            "n_obs": 30,
+            "n_vars": 120,
+            "cluster_ids": ["0", "1", "2"],
+        },
+        "validation_checks": ["cluster_labels_verified"],
+    }
+    model = ScriptedModel(
+        [
+            AIMessage(content="分析把细胞划分成了 9 个细胞群。"),
+        ]
+    )
+    observer = RecordingObserver()
+    execution, _, _ = _execution(
+        tmp_path,
+        model,
+        observer=observer,
+        config=AgentLoopConfig(max_empty_reprompts=2),
+    )
+    await _seed_pending_tool_call(
+        execution,
+        [],
+        {
+            "name": "echo_tool",
+            "args": {"text": "seed"},
+            "id": "seed-science",
+            "type": "tool_call",
+        },
+        state_updates={
+            "tool_evidence": {
+                "science-call": {
+                    "capability": "cluster_cells",
+                    "result_status": "completed",
+                    "artifact_ids": [artifact_id],
+                    "scientific_evidence": scientific_evidence,
+                }
+            }
+        },
+    )
+    await execution._graph.aupdate_state(  # noqa: SLF001
+        execution._graph_config,  # noqa: SLF001
+        {
+            "messages": [
+                ToolMessage(
+                    content="seeded current-run evidence",
+                    tool_call_id="seed-science",
+                )
+            ]
+        },
+        as_node="tools",
+    )
+
+    outcome = await execution.continue_from_checkpoint()
+
+    assert outcome.status == AgentOutcomeStatus.COMPLETED
+    assert outcome.final_response is not None
+    assert "cluster_cells：reused" in outcome.final_response
+    assert "30 cells × 120 genes" in outcome.final_response
+    public_messages = [
+        payload["content"]
+        for event_type, payload, _ in observer.events
+        if event_type == "message.completed"
+    ]
+    assert public_messages == [outcome.final_response]
+    assert all("9 个细胞群" not in item for item in public_messages)
+
+
+@pytest.mark.asyncio
+async def test_finish_task_uses_same_authoritative_scientific_renderer(
+    tmp_path,
+) -> None:
+    artifact_id = str(uuid4())
+    evidence = {
+        "schema_version": 1,
+        "kind": "atomic_analysis",
+        "evidence_level": "validated_observation",
+        "capability": "cluster_cells",
+        "artifact_ids": [artifact_id],
+        "source_artifact_id": artifact_id,
+        "disposition": "reused",
+        "parameters": {"resolution": 1.0},
+        "random_seed": 0,
+        "input_state": {
+            "n_obs": 30,
+            "n_vars": 120,
+            "cluster_ids": ["0", "1", "2"],
+        },
+        "output_state": {
+            "n_obs": 30,
+            "n_vars": 120,
+            "cluster_ids": ["0", "1", "2"],
+        },
+        "validation_checks": ["cluster_labels_verified"],
+    }
+    observer = RecordingObserver()
+    execution, _, _ = _execution(
+        tmp_path,
+        ScriptedModel(
+            [
+                AIMessage(
+                    content="错误科学草稿不应进入 checkpoint。",
+                    tool_calls=[
+                        {
+                            "name": "finish_task",
+                            "args": {
+                                "final_response": (
+                                    "本次重新执行了聚类，共得到 4 个 cluster。"
+                                ),
+                                "evidence_artifact_ids": [artifact_id],
+                            },
+                            "id": "finish-conflicting-science",
+                            "type": "tool_call",
+                        }
+                    ],
+                )
+            ]
+        ),
+        observer=observer,
+    )
+    await _seed_pending_tool_call(
+        execution,
+        [],
+        {
+            "name": "echo_tool",
+            "args": {"text": "seed"},
+            "id": "seed-scientific-finish",
+            "type": "tool_call",
+        },
+        state_updates={
+            "tool_evidence": {
+                "science-call": {
+                    "capability": "cluster_cells",
+                    "result_status": "completed",
+                    "artifact_ids": [artifact_id],
+                    "scientific_evidence": evidence,
+                }
+            }
+        },
+    )
+    await execution._graph.aupdate_state(  # noqa: SLF001
+        execution._graph_config,  # noqa: SLF001
+        {
+            "messages": [
+                ToolMessage(
+                    content="seeded current-run evidence",
+                    tool_call_id="seed-scientific-finish",
+                )
+            ]
+        },
+        as_node="tools",
+    )
+
+    outcome = await execution.continue_from_checkpoint()
+
+    assert outcome.status == AgentOutcomeStatus.COMPLETED
+    assert outcome.final_response is not None
+    assert "cluster_cells：reused" in outcome.final_response
+    assert "4 个 cluster" not in outcome.final_response
+    public_messages = [
+        payload["content"]
+        for event_type, payload, _ in observer.events
+        if event_type == "message.completed"
+    ]
+    assert public_messages == [outcome.final_response]
+    snapshot = await execution._graph.aget_state(  # noqa: SLF001
+        execution._graph_config  # noqa: SLF001
+    )
+    serialized_messages = json.dumps(
+        [
+            message.model_dump(mode="json")
+            for message in snapshot.values["messages"]
+        ],
+        ensure_ascii=False,
+        default=str,
+    )
+    assert "本次重新执行了聚类，共得到 4 个 cluster。" not in serialized_messages
+    assert "错误科学草稿不应进入 checkpoint。" not in serialized_messages
+    assert "由 backend 根据当前 Run 已验证科研证据生成终答。" in (
+        serialized_messages
+    )
+    finish_outcome = next(
+        json.loads(str(message.content))
+        for message in snapshot.values["messages"]
+        if isinstance(message, ToolMessage)
+        and message.tool_call_id == "finish-conflicting-science"
+    )
+    assert finish_outcome["status"] == "completed"
 
 
 @pytest.mark.asyncio
@@ -2390,6 +2600,8 @@ async def test_composite_goal_uses_bounded_observable_plan(tmp_path) -> None:
         execution._system_prompt.index("【可用 Tool 与调用提示】")
     )
     assert "Agent-facing Tool 只接收" in execution._system_prompt
+    assert "propose_memory" not in execution._system_prompt
+    assert "cross_conversation_memory_data" not in execution._system_prompt
 
 
 @pytest.mark.asyncio
@@ -3204,3 +3416,646 @@ def test_agent_loop_factory_uses_agent_primary_alias(tmp_path) -> None:
     )
 
     assert llm_factory.aliases == ["agent_primary"]
+
+
+class IdentityOnlyMemoryPort:
+    def __init__(self) -> None:
+        self.item_id = uuid4()
+        self.version_id = uuid4()
+        self.message_id = uuid4()
+        self.secret_body = "这段记忆正文绝不能进入 ToolMessage 或 checkpoint。"
+        self.calls: list[str] = []
+
+    def _identity(self, *, selection_reason: str) -> dict[str, Any]:
+        return {
+            "item_id": str(self.item_id),
+            "version_id": str(self.version_id),
+            "version_number": 2,
+            "content_sha256": "a" * 64,
+            "kind": "project_context",
+            "source_kind": "corrected",
+            "selection_reason": selection_reason,
+        }
+
+    async def search(
+        self,
+        *,
+        kinds: tuple[str, ...],
+        limit: int,
+        tool_call_id: str,
+    ) -> tuple[dict[str, Any], ...]:
+        assert kinds == ("project_context",)
+        assert limit == 1
+        assert tool_call_id == "memory-search"
+        self.calls.append("search_memory")
+        return (self._identity(selection_reason="tool_search"),)
+
+    async def propose(
+        self,
+        *,
+        kind: str,
+        source_message_id: Any,
+        tool_call_id: str,
+    ) -> dict[str, Any]:
+        assert kind == "project_context"
+        assert source_message_id == self.message_id
+        assert tool_call_id == "memory-propose"
+        self.calls.append("propose_memory")
+        return {
+            **self._identity(selection_reason="selected"),
+            "status": "proposed",
+        }
+
+    async def request_forget(
+        self,
+        *,
+        item_id,
+        version_id,
+        tool_call_id,
+    ) -> dict[str, Any]:
+        assert item_id == self.item_id
+        assert version_id == self.version_id
+        assert tool_call_id == "memory-forget"
+        self.calls.append("forget_memory")
+        return {
+            **self._identity(selection_reason="selected"),
+            "status": "confirmation_required",
+        }
+
+
+class PartialIdentityMemoryPort(IdentityOnlyMemoryPort):
+    async def search(self, **kwargs):
+        del kwargs
+        identity = self._identity(selection_reason="tool_search")
+        identity.pop("selection_reason")
+        return (identity,)
+
+
+class SingleMemorySearchModel:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def bind_tools(self, tools):
+        assert "search_memory" in {
+            tool["function"]["name"] for tool in tools
+        }
+        return self
+
+    async def ainvoke(self, messages):
+        del messages
+        self.calls += 1
+        if self.calls == 1:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "search_memory",
+                        "args": {
+                            "kinds": ["project_context"],
+                            "limit": 1,
+                        },
+                        "id": "partial-memory-search",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        return AIMessage(content="本次记忆搜索结果不可用。")
+
+
+@pytest.mark.asyncio
+async def test_memory_search_rejects_partial_adapter_identity(
+    tmp_path,
+) -> None:
+    port = PartialIdentityMemoryPort()
+    model = SingleMemorySearchModel()
+    conversation_id = uuid4()
+    execution = AgentLoopFactory(
+        _layer(EchoCapability()),
+        model_factory=lambda: model,
+        capability_invoker_factory=CooperativeInProcessCapabilityInvoker,
+    ).create(
+        run_id=uuid4(),
+        conversation_id=conversation_id,
+        capability_context=CapabilityContext(
+            conversation_id=conversation_id,
+            artifacts=ConversationArtifactStore(
+                conversation_id,
+                tmp_path / str(conversation_id),
+            ),
+        ),
+        checkpointer=InMemorySaver(),
+        memory_tools=port,
+    )
+
+    outcome = await execution.start("查找项目记忆")
+    snapshot = await execution._graph.aget_state(  # noqa: SLF001
+        execution._graph_config  # noqa: SLF001
+    )
+    tool_message = next(
+        message
+        for message in snapshot.values["messages"]
+        if isinstance(message, ToolMessage)
+        and message.tool_call_id == "partial-memory-search"
+    )
+
+    assert outcome.status == AgentOutcomeStatus.COMPLETED
+    assert "memory_control_contract_invalid" in str(tool_message.content)
+    assert snapshot.values["loaded_memory_resources"] == []
+
+
+class FenceLosingMemoryPort:
+    def __init__(self) -> None:
+        self.item_id = uuid4()
+        self.version_id = uuid4()
+        self.message_id = uuid4()
+        self.calls: list[str] = []
+
+    @staticmethod
+    def _fatal() -> AgentMemoryControlFatalError:
+        return AgentMemoryControlFatalError(
+            error_code="memory_attempt_fence_lost",
+            summary="当前执行已失去写入记忆快照的 attempt fence。",
+            recovery_hint=(
+                "停止当前旧 attempt；由 Run coordinator 的当前 owner 恢复。"
+            ),
+        )
+
+    async def search(self, **kwargs):
+        del kwargs
+        self.calls.append("search_memory")
+        raise self._fatal()
+
+    async def propose(self, **kwargs):
+        del kwargs
+        self.calls.append("propose_memory")
+        raise self._fatal()
+
+    async def request_forget(self, **kwargs):
+        del kwargs
+        self.calls.append("forget_memory")
+        raise self._fatal()
+
+
+class FenceLosingMemoryModel:
+    def __init__(self, tool_name: str, port: FenceLosingMemoryPort) -> None:
+        self.tool_name = tool_name
+        self.port = port
+        self.calls = 0
+
+    def bind_tools(self, tools):
+        assert self.tool_name in {
+            tool["function"]["name"] for tool in tools
+        }
+        return self
+
+    async def ainvoke(self, messages):
+        del messages
+        self.calls += 1
+        if self.calls > 1:
+            return AIMessage(content="旧 owner 不应继续执行。")
+        arguments = {
+            "search_memory": {
+                "kinds": ["project_context"],
+                "limit": 1,
+            },
+            "propose_memory": {
+                "kind": "project_context",
+                "source_message_id": str(self.port.message_id),
+            },
+            "forget_memory": {
+                "item_id": str(self.port.item_id),
+                "version_id": str(self.port.version_id),
+            },
+        }[self.tool_name]
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": self.tool_name,
+                    "args": arguments,
+                    "id": f"fatal-{self.tool_name}",
+                    "type": "tool_call",
+                }
+            ],
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tool_name",
+    ["search_memory", "propose_memory", "forget_memory"],
+)
+async def test_memory_control_fence_loss_aborts_without_tool_result_or_retry(
+    tmp_path,
+    tool_name: str,
+) -> None:
+    port = FenceLosingMemoryPort()
+    model = FenceLosingMemoryModel(tool_name, port)
+    conversation_id = uuid4()
+    factory = AgentLoopFactory(
+        _layer(EchoCapability()),
+        model_factory=lambda: model,
+        capability_invoker_factory=CooperativeInProcessCapabilityInvoker,
+    )
+    execution = factory.create(
+        run_id=uuid4(),
+        conversation_id=conversation_id,
+        capability_context=CapabilityContext(
+            conversation_id=conversation_id,
+            artifacts=ConversationArtifactStore(
+                conversation_id,
+                tmp_path / str(conversation_id),
+            ),
+        ),
+        checkpointer=InMemorySaver(),
+        memory_tools=port,
+    )
+
+    with pytest.raises(
+        AgentMemoryControlFatalError,
+        match="attempt fence",
+    ):
+        await execution.start("触发记忆控制 Tool 的 ownership fence")
+
+    snapshot = await execution._graph.aget_state(  # noqa: SLF001
+        execution._graph_config  # noqa: SLF001
+    )
+    assert model.calls == 1
+    assert port.calls == [tool_name]
+    assert not any(
+        isinstance(message, ToolMessage)
+        and message.tool_call_id == f"fatal-{tool_name}"
+        for message in snapshot.values["messages"]
+    )
+    assert snapshot.values["tool_evidence"] == {}
+
+
+class MemoryControlSequenceModel:
+    def __init__(self, port: IdentityOnlyMemoryPort) -> None:
+        self.port = port
+        self.calls = 0
+        self.tool_names: set[str] = set()
+        self.tools: list[dict[str, Any]] = []
+
+    def bind_tools(self, tools):
+        self.tools = list(tools)
+        self.tool_names = {
+            tool["function"]["name"] for tool in tools
+        }
+        return self
+
+    async def ainvoke(self, messages):
+        del messages
+        self.calls += 1
+        if self.calls == 1:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "search_memory",
+                        "args": {
+                            "kinds": ["project_context"],
+                            "limit": 1,
+                        },
+                        "id": "memory-search",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        if self.calls == 2:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "propose_memory",
+                        "args": {
+                            "kind": "project_context",
+                            "source_message_id": str(self.port.message_id),
+                        },
+                        "id": "memory-propose",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        if self.calls == 3:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "forget_memory",
+                        "args": {
+                            "item_id": str(self.port.item_id),
+                            "version_id": str(self.port.version_id),
+                        },
+                        "id": "memory-forget",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        return AIMessage(content="记忆控制请求已处理。")
+
+
+@pytest.mark.asyncio
+async def test_memory_control_tools_are_identity_only_and_never_plan_evidence(
+    tmp_path,
+) -> None:
+    port = IdentityOnlyMemoryPort()
+    model = MemoryControlSequenceModel(port)
+    conversation_id = uuid4()
+    layer = _layer(EchoCapability())
+    factory = AgentLoopFactory(
+        layer,
+        model_factory=lambda: model,
+        capability_invoker_factory=CooperativeInProcessCapabilityInvoker,
+    )
+    context = CapabilityContext(
+        conversation_id=conversation_id,
+        artifacts=ConversationArtifactStore(
+            conversation_id,
+            tmp_path / str(conversation_id),
+        ),
+    )
+    execution = factory.create(
+        run_id=uuid4(),
+        conversation_id=conversation_id,
+        capability_context=context,
+        checkpointer=InMemorySaver(),
+        memory_tools=port,
+    )
+
+    outcome = await execution.start("按需处理跨会话记忆控制")
+    snapshot = await execution._graph.aget_state(  # noqa: SLF001
+        execution._graph_config  # noqa: SLF001
+    )
+
+    assert outcome.status == AgentOutcomeStatus.COMPLETED
+    assert port.calls == [
+        "search_memory",
+        "propose_memory",
+        "forget_memory",
+    ]
+    assert {
+        "search_memory",
+        "propose_memory",
+        "forget_memory",
+    } <= model.tool_names
+    propose_schema = next(
+        tool["function"]["parameters"]
+        for tool in model.tools
+        if tool["function"]["name"] == "propose_memory"
+    )
+    assert "source_message_id" in propose_schema["properties"]
+    assert "source_message_ids" not in propose_schema["properties"]
+    assert "source_message_id" in propose_schema["required"]
+    assert all(
+        term in execution._system_prompt
+        for term in (
+            "严格调用前置条件",
+            "按消息的整体用途判断",
+            "一条用户消息",
+            "两个独立长期事实",
+            "单个 source_message_id",
+            "不能创建计划",
+            "停止使用、撤销或替换",
+            "先调用 search_memory",
+            "禁止猜测 UUID",
+        )
+    )
+    assert snapshot.values["tool_evidence"] == {}
+    assert snapshot.values["plan_task_statuses"] == {}
+    assert snapshot.values["plan_step_evidence"] == {}
+    assert snapshot.values["loaded_memory_resources"] == [
+        port._identity(selection_reason="tool_search")
+    ]
+    serialized = json.dumps(
+        snapshot.values,
+        ensure_ascii=False,
+        default=str,
+    )
+    assert port.secret_body not in serialized
+
+    outcomes = [
+        json.loads(message.content)
+        for message in snapshot.values["messages"]
+        if isinstance(message, ToolMessage)
+        and message.tool_call_id
+        in {"memory-search", "memory-propose", "memory-forget"}
+    ]
+    assert [item["capability"] for item in outcomes] == [
+        "search_memory",
+        "propose_memory",
+        "forget_memory",
+    ]
+    assert all("content" not in item.get("result", {}) for item in outcomes)
+    assert all("evidence_handle" not in item for item in outcomes)
+    assert all("plan_task_id" not in item for item in outcomes)
+
+
+class TransientMemoryResolver:
+    def __init__(self) -> None:
+        self.body = "只应出现在当前模型输入中的历史偏好正文。"
+
+    async def resolve(self, extra_resources):
+        from omnicell_agent.agent.hooks import (
+            MemoryTurnResolution,
+            ResolvedMemory,
+        )
+
+        assert extra_resources == []
+        return MemoryTurnResolution(
+            memories=(
+                ResolvedMemory(
+                    item_id=str(uuid4()),
+                    version_id=str(uuid4()),
+                    version_number=1,
+                    content_sha256="b" * 64,
+                    kind="response_preference",
+                    source_kind="explicit",
+                    selection_reason="default",
+                    dataset_scope={},
+                    provenance=(),
+                    content=self.body,
+                ),
+            ),
+        )
+
+
+class MemoryViewRecordingModel:
+    def __init__(self) -> None:
+        self.messages: list[Any] = []
+
+    def bind_tools(self, tools):
+        del tools
+        return self
+
+    async def ainvoke(self, messages):
+        self.messages = list(messages)
+        return AIMessage(content="已按当前请求回答。")
+
+
+@pytest.mark.asyncio
+async def test_resolved_memory_body_reaches_model_but_not_langgraph_checkpoint(
+    tmp_path,
+) -> None:
+    resolver = TransientMemoryResolver()
+    model = MemoryViewRecordingModel()
+    conversation_id = uuid4()
+    layer = _layer(EchoCapability())
+    factory = AgentLoopFactory(
+        layer,
+        model_factory=lambda: model,
+        capability_invoker_factory=CooperativeInProcessCapabilityInvoker,
+    )
+    context = CapabilityContext(
+        conversation_id=conversation_id,
+        artifacts=ConversationArtifactStore(
+            conversation_id,
+            tmp_path / str(conversation_id),
+        ),
+    )
+    execution = factory.create(
+        run_id=uuid4(),
+        conversation_id=conversation_id,
+        capability_context=context,
+        checkpointer=InMemorySaver(),
+        memory_resolver=resolver,
+    )
+
+    outcome = await execution.start("只回答当前请求")
+    snapshot = await execution._graph.aget_state(  # noqa: SLF001
+        execution._graph_config  # noqa: SLF001
+    )
+
+    assert outcome.status == AgentOutcomeStatus.COMPLETED
+    memory_views = [
+        message
+        for message in model.messages
+        if isinstance(message, HumanMessage)
+        and message.name == "cross_conversation_memory_data"
+    ]
+    assert len(memory_views) == 1
+    assert resolver.body in str(memory_views[0].content)
+    assert resolver.body not in json.dumps(
+        snapshot.values,
+        ensure_ascii=False,
+        default=str,
+    )
+
+
+@pytest.mark.asyncio
+async def test_memory_disclosure_change_blocks_agent_level_model_retry(
+    tmp_path,
+) -> None:
+    from omnicell_agent.agent.hooks import (
+        DispatchAuthorizationInvalidatedError,
+        MemoryTurnResolution,
+        ResolvedMemory,
+    )
+
+    class Resolver:
+        def __init__(self) -> None:
+            self.preflights = 0
+
+        async def resolve(self, extra_resources):
+            assert extra_resources == []
+
+            async def pre_dispatch() -> None:
+                self.preflights += 1
+                if self.preflights > 1:
+                    raise DispatchAuthorizationInvalidatedError()
+
+            return MemoryTurnResolution(
+                memories=(
+                    ResolvedMemory(
+                        item_id=str(uuid4()),
+                        version_id=str(uuid4()),
+                        version_number=1,
+                        content_sha256="c" * 64,
+                        kind="profile_fact",
+                        source_kind="explicit",
+                        selection_reason="default",
+                        dataset_scope={},
+                        provenance=(),
+                        content="仅首个已授权 attempt 可以看到的历史事实。",
+                    ),
+                ),
+                pre_dispatch=pre_dispatch,
+            )
+
+    resolver = Resolver()
+    model = ScriptedModel(
+        [RuntimeError("first provider attempt failed"), _finish("must not run")]
+    )
+    conversation_id = uuid4()
+    execution = AgentLoopFactory(
+        _layer(EchoCapability()),
+        model_factory=lambda: model,
+        capability_invoker_factory=CooperativeInProcessCapabilityInvoker,
+        config=AgentLoopConfig(max_model_retries=1),
+    ).create(
+        run_id=uuid4(),
+        conversation_id=conversation_id,
+        capability_context=CapabilityContext(
+            conversation_id=conversation_id,
+            artifacts=ConversationArtifactStore(
+                conversation_id,
+                tmp_path / str(conversation_id),
+            ),
+        ),
+        checkpointer=InMemorySaver(),
+        memory_resolver=resolver,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="memory disclosure authorization changed",
+    ):
+        await execution.start("执行一个需要重试的请求")
+
+    assert model.calls == 1
+    assert resolver.preflights == 2
+
+
+@pytest.mark.asyncio
+async def test_provider_exception_with_memory_is_replaced_before_coordinator_log(
+    tmp_path,
+) -> None:
+    resolver = TransientMemoryResolver()
+    raw_error = f"provider echoed request containing {resolver.body}"
+    model = ScriptedModel([RuntimeError(raw_error)])
+    conversation_id = uuid4()
+    execution = AgentLoopFactory(
+        _layer(EchoCapability()),
+        model_factory=lambda: model,
+        capability_invoker_factory=CooperativeInProcessCapabilityInvoker,
+        config=AgentLoopConfig(max_model_retries=0),
+    ).create(
+        run_id=uuid4(),
+        conversation_id=conversation_id,
+        capability_context=CapabilityContext(
+            conversation_id=conversation_id,
+            artifacts=ConversationArtifactStore(
+                conversation_id,
+                tmp_path / str(conversation_id),
+            ),
+        ),
+        checkpointer=InMemorySaver(),
+        memory_resolver=resolver,
+    )
+
+    with pytest.raises(RuntimeError) as captured:
+        await execution.start("触发 provider 失败")
+
+    assert str(captured.value) == (
+        "model invocation failed with transient memory context"
+    )
+    assert captured.value.__cause__ is None
+    assert raw_error not in str(captured.value)
+    snapshot = await execution._graph.aget_state(  # noqa: SLF001
+        execution._graph_config  # noqa: SLF001
+    )
+    assert resolver.body not in json.dumps(
+        snapshot.values,
+        ensure_ascii=False,
+        default=str,
+    )

@@ -1,6 +1,7 @@
 import scanpy as sc
 import pandas as pd
 import numpy as np
+import json
 
 if "adata" not in locals() and "adata" not in globals():
     raw_data_path = globals().get("raw_data_path")
@@ -42,9 +43,19 @@ def _resolve_to_var_symbol(adata: sc.AnnData, token) -> str:
 
 # 防御性逻辑：识别并筛分单细胞样本簇 (避免 rank_genes_groups 运行期间崩溃)
 group_counts = adata.obs["leiden"].value_counts()
-small_groups = group_counts[group_counts <= 1].index.tolist()
-all_groups = adata.obs["leiden"].cat.categories.tolist()
-groups_to_analyze = [g for g in all_groups if g not in small_groups]
+small_groups = set(group_counts[group_counts <= 1].index.tolist())
+if hasattr(adata.obs["leiden"], "cat"):
+    all_groups = adata.obs["leiden"].cat.categories.tolist()
+else:
+    all_groups = sorted(adata.obs["leiden"].dropna().unique().tolist())
+groups_to_analyze = [group for group in all_groups if group not in small_groups]
+all_cluster_ids = [str(group) for group in all_groups]
+tested_cluster_ids = [str(group) for group in groups_to_analyze]
+omitted_clusters = {
+    str(group): "too_few_cells"
+    for group in all_groups
+    if group in small_groups
+}
 
 marker_table_path = globals().get("marker_table_path")
 if not marker_table_path:
@@ -54,19 +65,29 @@ if not groups_to_analyze:
     print(
         "Warning: 没有可用于统计分析的正常簇（都不大于1个细胞）。强制终止 Marker 搜寻并导出空表。"
     )
-    pd.DataFrame(
-        columns=[
-            "cluster",
-            "names",
-            "gene_name",
-            "scores",
-            "pvals",
-            "pvals_adj",
-            "logfoldchanges",
-            "pct.1",
-            "pct.2",
-        ]
-    ).to_json(marker_table_path, orient="records", force_ascii=False)
+    selection = {
+        "statistical_input": "adata.X",
+        "method": marker_method,
+        "adjusted_p_value_max": adjusted_p_value_max,
+        "min_log2_fold_change": min_log2_fold_change,
+        "top_n_per_cluster": top_n_per_cluster,
+        "all_clusters": all_cluster_ids,
+        "tested_clusters": [],
+        "reported_clusters": [],
+        "omitted_clusters": {
+            cluster_id: "too_few_cells"
+            for cluster_id in all_cluster_ids
+        },
+        "selected_counts": {},
+        "marker_count": 0,
+        "thresholds_strict": True,
+    }
+    with open(marker_table_path, "w", encoding="utf-8") as marker_stream:
+        json.dump(
+            {"metadata": {"selection": selection}, "markers": []},
+            marker_stream,
+            ensure_ascii=False,
+        )
     import sys
 
     sys.exit(0)
@@ -76,15 +97,18 @@ sc.tl.rank_genes_groups(
     "leiden",
     method=marker_method,
     groups=groups_to_analyze,
+    use_raw=False,
 )
 
 var_set = set(adata.var_names.astype(str))
 marker_dfs = []
+selected_counts = {}
 
 for group in groups_to_analyze:
     # 优先使用 Scanpy 官方 DataFrame，避免手写 uns 结构化数组时把索引当成基因名落盘
     df = sc.get.rank_genes_groups_df(adata, group=group)
     if df.empty:
+        omitted_clusters[str(group)] = "no_threshold_hits"
         continue
 
     if "group" in df.columns:
@@ -95,6 +119,7 @@ for group in groups_to_analyze:
     df["names"] = df["names"].astype(str)
     df = df[df["names"].isin(var_set)]
     if df.empty:
+        omitted_clusters[str(group)] = "no_threshold_hits"
         continue
 
     genes = df["names"].tolist()
@@ -123,31 +148,47 @@ for group in groups_to_analyze:
     ]
     take = df_filtered.head(top_n_per_cluster)
     if take.empty:
-        take = (
-            df[df["pvals_adj"] < adjusted_p_value_max]
-            .sort_values("pvals_adj")
-            .head(top_n_per_cluster)
-        )
-    if take.empty:
-        take = df.sort_values("pvals_adj").head(top_n_per_cluster)
+        omitted_clusters[str(group)] = "no_threshold_hits"
+        continue
+    selected_counts[str(group)] = int(len(take))
     marker_dfs.append(take)
 
 if not marker_dfs:
-    pd.DataFrame(
-        columns=[
-            "cluster",
-            "names",
-            "gene_name",
-            "scores",
-            "pvals",
-            "pvals_adj",
-            "logfoldchanges",
-            "pct.1",
-            "pct.2",
-        ]
-    ).to_json(marker_table_path, orient="records", force_ascii=False)
+    marker_rows = []
     print(f"Warning: 无可用 marker 行，已写出空表 -> {marker_table_path}")
 else:
     all_markers_df = pd.concat(marker_dfs, ignore_index=True)
-    all_markers_df.to_json(marker_table_path, orient="records", force_ascii=False)
+    marker_rows = json.loads(
+        all_markers_df.to_json(orient="records", force_ascii=False)
+    )
     print(f"Marker genes analysis completed and deeply JSON contract saved to {marker_table_path}")
+
+reported_clusters = [
+    cluster_id
+    for cluster_id in all_cluster_ids
+    if cluster_id in selected_counts
+]
+selection = {
+    "statistical_input": "adata.X",
+    "method": marker_method,
+    "adjusted_p_value_max": adjusted_p_value_max,
+    "min_log2_fold_change": min_log2_fold_change,
+    "top_n_per_cluster": top_n_per_cluster,
+    "all_clusters": all_cluster_ids,
+    "tested_clusters": tested_cluster_ids,
+    "reported_clusters": reported_clusters,
+    "omitted_clusters": omitted_clusters,
+    "selected_counts": selected_counts,
+    "marker_count": len(marker_rows),
+    "thresholds_strict": True,
+}
+with open(marker_table_path, "w", encoding="utf-8") as marker_stream:
+    json.dump(
+        {
+            "metadata": {"selection": selection},
+            "markers": marker_rows,
+        },
+        marker_stream,
+        ensure_ascii=False,
+    )
+_atomic_operation_disposition = "executed"

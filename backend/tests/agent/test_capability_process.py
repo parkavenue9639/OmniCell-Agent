@@ -127,6 +127,22 @@ async def _record_activity(
 def _marker_ref(store: ConversationArtifactStore):
     path = store.workspace / "inputs" / "markers.json"
     MarkerTableContract(
+        metadata={
+            "selection": {
+                "statistical_input": "adata.X",
+                "method": "wilcoxon",
+                "adjusted_p_value_max": 0.05,
+                "min_log2_fold_change": 1.0,
+                "top_n_per_cluster": 50,
+                "all_clusters": ["0"],
+                "tested_clusters": ["0"],
+                "reported_clusters": ["0"],
+                "omitted_clusters": {},
+                "selected_counts": {"0": 1},
+                "marker_count": 1,
+                "thresholds_strict": True,
+            }
+        },
         markers=[
             MarkerGene(
                 gene_name="IL7R",
@@ -630,6 +646,7 @@ async def test_exploratory_process_is_killed_and_partial_scope_is_discarded(
             ExploratoryAnalysisRequest(
                 dataset=dataset_ref,
                 goal="controlled cancellation",
+                acceptance_criterion="other",
             ).model_dump(mode="json"),
             cancellation=token,
         )
@@ -747,6 +764,7 @@ async def test_exploratory_forced_kill_reaps_exact_owned_docker_container(
             ExploratoryAnalysisRequest(
                 dataset=dataset_ref,
                 goal="force kill after Docker startup",
+                acceptance_criterion="other",
             ).model_dump(mode="json"),
             cancellation=token,
         )

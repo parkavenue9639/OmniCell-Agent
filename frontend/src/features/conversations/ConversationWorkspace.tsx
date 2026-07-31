@@ -13,12 +13,17 @@ import type {
   ConversationWorkspaceActions,
   ConversationWorkspaceViewModel,
   EventViewModel,
+  MemoryCommandViewModel,
+  MemoryItemViewModel,
+  MemoryKind,
+  MemoryRunMode,
   ReviewViewModel,
   RunState,
   TaskViewModel,
   TimelineArtifactItem,
   TimelineItem,
   TimelineMessageItem,
+  TimelineMemoryItem,
   TimelineNoticeItem,
   TimelineReviewItem,
   TimelineRuntimeItem,
@@ -30,7 +35,12 @@ import type {
 } from "./view-model";
 
 type InspectorTab =
-  "tasks" | "toolExecutions" | "reviews" | "artifacts" | "events";
+  | "tasks"
+  | "toolExecutions"
+  | "reviews"
+  | "artifacts"
+  | "events"
+  | "memories";
 
 export interface ConversationWorkspaceProps {
   model: ConversationWorkspaceViewModel;
@@ -64,6 +74,7 @@ const tabLabels: Record<InspectorTab, string> = {
   reviews: "审核",
   artifacts: "产物",
   events: "事件",
+  memories: "记忆",
 };
 
 function Icon({
@@ -496,6 +507,391 @@ function SkillTimelineItem({ item }: { item: TimelineSkillItem }) {
       <footer>
         <time>{item.occurredAtLabel}</time>
         <span>{item.resourceLabel}</span>
+      </footer>
+    </article>
+  );
+}
+
+function MemoryTimelineItem({
+  item,
+  memories,
+  commandsPending,
+  command,
+  actions,
+}: {
+  item: TimelineMemoryItem;
+  memories: readonly MemoryItemViewModel[];
+  commandsPending: boolean;
+  command?: MemoryCommandViewModel;
+  actions?: ConversationWorkspaceActions;
+}) {
+  const [confirmRejectProposal, setConfirmRejectProposal] = useState(false);
+  const needsConfirmation =
+    item.operation === "proposal" || item.operation === "forget";
+  const primaryIdentity = item.identities[0];
+  const currentMemory = primaryIdentity
+    ? memories.find((memory) => memory.id === primaryIdentity.itemId)
+    : undefined;
+  const matchingMemory =
+    currentMemory?.versionId === primaryIdentity?.versionId
+      ? currentMemory
+      : undefined;
+  const commandTargetsOperation =
+    (item.operation === "proposal" &&
+      (command?.kind === "approve" || command?.kind === "purge")) ||
+    (item.operation === "forget" && command?.kind === "forget");
+  const cardCommand =
+    commandTargetsOperation &&
+    primaryIdentity !== undefined &&
+    command?.memoryId === primaryIdentity.itemId
+      ? command
+      : undefined;
+  const commandAction =
+    cardCommand?.kind === "approve"
+      ? "确认记住"
+      : cardCommand?.kind === "purge"
+        ? "拒绝并清除"
+        : cardCommand?.kind === "forget"
+          ? "确认忘记"
+          : cardCommand?.kind === "correct"
+            ? "保存纠正"
+            : "更新记忆";
+  const cardPending = cardCommand?.pending === true;
+  const cardError = cardCommand?.errorMessage;
+  const canApproveProposal =
+    item.operation === "proposal" &&
+    primaryIdentity !== undefined &&
+    currentMemory?.status === "proposed" &&
+    currentMemory.versionId === primaryIdentity.versionId;
+  const canConfirmForget =
+    item.operation === "forget" &&
+    primaryIdentity !== undefined &&
+    currentMemory?.status === "active" &&
+    currentMemory.versionId === primaryIdentity.versionId;
+  const canRejectProposal = canApproveProposal && currentMemory.canPurge;
+  const resolution =
+    item.operation === "proposal"
+      ? currentMemory?.status === "purged"
+        ? "rejected"
+        : currentMemory?.status === "revoked"
+          ? "forgotten"
+        : matchingMemory?.status === "active"
+          ? "remembered"
+          : matchingMemory?.status === "proposed"
+            ? "pending"
+            : currentMemory
+              ? "stale"
+              : "historical"
+      : item.operation === "forget"
+        ? currentMemory?.status === "revoked" ||
+          currentMemory?.status === "purged"
+          ? "forgotten"
+          : matchingMemory?.status === "active"
+            ? "pending"
+            : currentMemory
+              ? "stale"
+              : "historical"
+        : "completed";
+  const display =
+    resolution === "remembered"
+      ? {
+          title: "已记住这条内容",
+          stateLabel: "已记住",
+          resultSummary: "已确认；未来相关对话可以使用这条记忆",
+          finalStep: "已确认记住",
+        }
+      : resolution === "forgotten"
+        ? {
+            title: "已忘记这条内容",
+            stateLabel:
+              currentMemory?.status === "purged" ? "已清除" : "已忘记",
+            resultSummary:
+              currentMemory?.status === "purged"
+                ? "正文已清除；未来对话不会再使用或从旧对话重新学习"
+                : "已确认；未来对话不再使用这条记忆",
+            finalStep:
+              currentMemory?.status === "purged" ? "已彻底删除" : "已确认忘记",
+          }
+        : resolution === "rejected"
+          ? {
+              title: "已拒绝这条记忆候选",
+              stateLabel: "未采用",
+              resultSummary:
+                currentMemory?.status === "purged"
+                  ? "候选正文已清除；未来对话不会使用或从旧对话重新提议"
+                  : "候选未采用；未来对话不会使用这条内容",
+              finalStep:
+                currentMemory?.status === "purged"
+                  ? "已拒绝并清除候选"
+                  : "已拒绝候选",
+            }
+        : resolution === "stale"
+          ? {
+              title: "这条记忆请求已失效",
+              stateLabel: "已失效",
+              resultSummary: "记忆状态或版本已经变化，无需再次确认",
+              finalStep: "请求已失效",
+            }
+          : resolution === "historical"
+            ? {
+                title: "当前无法核对记忆状态",
+                stateLabel: "状态不可用",
+                resultSummary: "无法读取对应的记忆资源；请稍后重试记忆服务",
+                finalStep: undefined,
+              }
+          : {
+              title: item.title,
+              stateLabel: item.stateLabel,
+              resultSummary: item.resultSummary,
+              finalStep: undefined,
+            };
+  const process = cardPending
+    ? item.process.map((step, index) =>
+        index === item.process.length - 1
+          ? {
+              ...step,
+              label: `正在${commandAction}`,
+              detail: "请求已经提交，正在等待 backend 返回权威状态",
+              state: "active" as const,
+            }
+          : step,
+      )
+    : cardError
+      ? item.process.map((step, index) =>
+          index === item.process.length - 1
+            ? {
+                ...step,
+                label: `${commandAction}失败`,
+                detail: cardError,
+                state: "failed" as const,
+              }
+            : step,
+        )
+      : resolution === "historical"
+      ? item.process.map((step, index) =>
+          index === item.process.length - 1
+            ? {
+                ...step,
+                label: "无法核对当前资源",
+                detail: "记忆资源暂时不可用，当前不会执行确认操作",
+                state: "failed" as const,
+              }
+            : step,
+        )
+        : display.finalStep === undefined
+          ? item.process
+          : item.process.map((step, index) =>
+              index === item.process.length - 1
+                ? {
+                    ...step,
+                    label: display.finalStep,
+                    detail: undefined,
+                    state: "completed" as const,
+                  }
+                : step,
+            );
+  const memoryContent = matchingMemory?.content;
+  const memoryCharacters =
+    memoryContent === undefined ? undefined : Array.from(memoryContent);
+  const contentLength = memoryCharacters?.length ?? 0;
+  const contentPreview = memoryCharacters?.slice(0, 280).join("");
+  const contentTruncated = contentLength > 280;
+  const tone = cardPending
+    ? "active"
+    : cardError
+      ? "danger"
+      : item.outcome === "degraded" ||
+          resolution === "pending" ||
+          resolution === "historical"
+        ? "warning"
+        : resolution === "stale"
+          ? "neutral"
+          : "success";
+  const visibleStateLabel = cardPending
+    ? "处理中"
+    : cardError
+      ? "操作失败"
+      : display.stateLabel;
+  const visibleResultSummary = cardPending
+    ? `正在${commandAction}，请稍候`
+    : cardError
+      ? `${commandAction}未完成；可以核对错误后重试`
+      : display.resultSummary;
+  const operationLabel = {
+    snapshot: "记忆快照",
+    search: "记忆搜索",
+    proposal: "记忆提议",
+    forget: "遗忘请求",
+  }[item.operation];
+  const toolName =
+    item.operation === "search"
+      ? "search_memory"
+      : item.operation === "proposal"
+        ? "propose_memory"
+        : item.operation === "forget"
+          ? "forget_memory"
+          : undefined;
+  const activityKind = item.operation === "snapshot" ? "BACKEND" : "TOOL";
+  return (
+    <article
+      className={`oc-activity-card oc-memory-activity ${
+        item.operation === "snapshot"
+          ? "oc-backend-activity"
+          : "oc-tool-activity"
+      }`}
+      data-activity-kind={activityKind.toLowerCase()}
+      data-state={item.outcome}
+      data-operation={item.operation}
+    >
+      <header>
+        <div className="oc-activity-heading">
+          <span className="oc-activity-kind">{activityKind}</span>
+          <div>
+            <h3>{display.title}</h3>
+            <p>{item.description}</p>
+          </div>
+        </div>
+        <StatusPill label={visibleStateLabel} tone={tone} />
+      </header>
+      <div className="oc-activity-purpose">
+        <span className="oc-activity-section-label">动作</span>
+        <strong>{item.actionSummary}</strong>
+      </div>
+      <ActivityProcess steps={process} />
+      <div
+        className="oc-activity-result"
+        data-state={
+          cardError || item.outcome === "degraded"
+            ? "failed"
+            : cardPending ||
+                (needsConfirmation &&
+                (resolution === "pending" || resolution === "historical")
+                )
+              ? "pending"
+              : "completed"
+        }
+      >
+        <span className="oc-activity-section-label">结果</span>
+        <strong>{visibleResultSummary}</strong>
+        {cardError && <small>错误：{cardError}</small>}
+        {item.degradedCode && <code>{item.degradedCode}</code>}
+      </div>
+      {contentPreview && (
+        <div className="oc-memory-confirm-preview">
+          <span>
+            {item.operation === "proposal"
+              ? "将完整保存的来源消息"
+              : "要忘记的内容"}
+          </span>
+          {item.operation === "proposal" && (
+            <small>
+              共 {contentLength} 字
+              {contentTruncated ? " · 当前预览前 280 字" : " · 当前已显示全文"}
+            </small>
+          )}
+          <p>{contentPreview}{contentTruncated ? "…" : ""}</p>
+          {item.operation === "proposal" && contentTruncated && memoryContent && (
+            <details>
+              <summary>查看完整原文</summary>
+              <pre className="oc-memory-full-content">{memoryContent}</pre>
+            </details>
+          )}
+        </div>
+      )}
+      {item.identities.length > 0 && (
+        <details className="oc-memory-identities">
+          <summary>查看版本身份 · {item.identities.length}</summary>
+          <dl>
+            {item.identities.map((identity) => (
+              <div key={`${identity.itemId}:${identity.versionId}`}>
+                <dt>
+                  {identity.kind} · v{identity.version}
+                </dt>
+                <dd>
+                  item {identity.itemId} · version {identity.versionId} ·{" "}
+                  {identity.source} · {identity.reason}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      )}
+      {(canApproveProposal || canConfirmForget) && (
+        <div className="oc-memory-inline-actions">
+          <span>
+            {canApproveProposal
+              ? "候选已按整条来源消息保存；确认后才会用于未来相关对话。"
+              : "确认后，未来对话将不再使用这条记忆。"}
+          </span>
+          <div>
+            {canRejectProposal && (
+              <button
+                disabled={commandsPending}
+                type="button"
+                onClick={() => setConfirmRejectProposal(true)}
+              >
+                不采用并清除
+              </button>
+            )}
+            <button
+              className={canApproveProposal ? "is-primary" : undefined}
+              disabled={commandsPending}
+              type="button"
+              onClick={() => {
+                if (canApproveProposal) {
+                  void actions?.onApproveMemory?.(
+                    primaryIdentity.itemId,
+                    primaryIdentity.version,
+                  );
+                } else {
+                  void actions?.onForgetMemory?.(
+                    primaryIdentity.itemId,
+                    primaryIdentity.version,
+                  );
+                }
+              }}
+            >
+              {canApproveProposal ? "确认记住" : "确认忘记"}
+            </button>
+          </div>
+        </div>
+      )}
+      {canRejectProposal && confirmRejectProposal && (
+        <div
+          aria-label="确认不采用记忆候选"
+          className="oc-memory-reject-confirm"
+          role="group"
+        >
+          <span>候选正文会被清除，原始对话仍会保留。</span>
+          <div>
+            <button
+              disabled={commandsPending}
+              type="button"
+              onClick={() => setConfirmRejectProposal(false)}
+            >
+              取消
+            </button>
+            <button
+              className="is-danger"
+              disabled={commandsPending}
+              type="button"
+              onClick={() =>
+                void actions?.onPurgeMemory?.(
+                  primaryIdentity.itemId,
+                  primaryIdentity.version,
+                )
+              }
+            >
+              确认不采用并清除
+            </button>
+          </div>
+        </div>
+      )}
+      <footer>
+        <time>{item.occurredAtLabel}</time>
+        <span>
+          {toolName ? `Tool · ${toolName}` : `Memory Plane · ${operationLabel}`}
+        </span>
       </footer>
     </article>
   );
@@ -943,9 +1339,15 @@ function NoticeTimelineItem({ item }: { item: TimelineNoticeItem }) {
 
 function Timeline({
   items,
+  memories,
+  memoryCommandsPending,
+  memoryCommand,
   actions,
 }: {
   items: readonly TimelineItem[];
+  memories: readonly MemoryItemViewModel[];
+  memoryCommandsPending: boolean;
+  memoryCommand?: MemoryCommandViewModel;
   actions?: ConversationWorkspaceActions;
 }) {
   if (items.length === 0) {
@@ -982,6 +1384,17 @@ function Timeline({
           return <SkillTimelineItem item={item} key={item.id} />;
         if (item.kind === "runtime")
           return <RuntimeTimelineItem item={item} key={item.id} />;
+        if (item.kind === "memory")
+          return (
+            <MemoryTimelineItem
+              actions={actions}
+              command={memoryCommand}
+              commandsPending={memoryCommandsPending}
+              item={item}
+              key={item.id}
+              memories={memories}
+            />
+          );
         if (item.kind === "artifact")
           return (
             <ArtifactTimelineItem item={item} actions={actions} key={item.id} />
@@ -1243,6 +1656,500 @@ function EventList({ events }: { events: readonly EventViewModel[] }) {
   );
 }
 
+const memoryKindLabels: Record<MemoryKind, string> = {
+  response_preference: "回复偏好",
+  profile_fact: "个人事实",
+  project_context: "项目上下文",
+  scientific_observation: "科研观察",
+};
+const creatableMemoryKinds: MemoryKind[] = [
+  "response_preference",
+  "profile_fact",
+  "project_context",
+];
+
+function MemorySettingSwitch({
+  checked,
+  disabled,
+  label,
+  description,
+  onChange,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  description: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="oc-memory-setting">
+      <span>
+        <strong>{label}</strong>
+        <small>{description}</small>
+      </span>
+      <input
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+        type="checkbox"
+      />
+    </label>
+  );
+}
+
+function MemoryItemCard({
+  item,
+  actions,
+  disabled,
+}: {
+  item: MemoryItemViewModel;
+  actions?: ConversationWorkspaceActions;
+  disabled: boolean;
+}) {
+  const [correcting, setCorrecting] = useState(false);
+  const [correction, setCorrection] = useState(item.content ?? "");
+  const [confirmForget, setConfirmForget] = useState(false);
+  const [confirmPurge, setConfirmPurge] = useState(false);
+  const pending = disabled || actions === undefined;
+
+  useEffect(() => {
+    // Version/status changes represent a different immutable memory view.
+    // Reset every local plaintext-bearing draft, especially when purge swaps
+    // the item to its body-less tombstone representation.
+    setCorrection(item.content ?? "");
+    setCorrecting(false);
+    setConfirmForget(false);
+    setConfirmPurge(false);
+  }, [item.status, item.versionId]);
+
+  const runAndClose = async (
+    command: boolean | Promise<boolean> | undefined,
+    close: () => void,
+  ) => {
+    if ((await command) === true) close();
+  };
+
+  return (
+    <article className="oc-memory-item" data-status={item.status}>
+      <header>
+        <div>
+          <small>{item.kindLabel}</small>
+          <strong>
+            {item.statusLabel}
+            {item.version ? ` · v${item.version}` : ""}
+          </strong>
+        </div>
+        <StatusPill
+          label={item.statusLabel}
+          tone={
+            item.status === "active"
+              ? "success"
+              : item.status === "proposed"
+                ? "warning"
+                : "neutral"
+          }
+        />
+      </header>
+      {item.content ? (
+        <p className="oc-memory-content">{item.content}</p>
+      ) : (
+        <p className="oc-memory-content is-empty">
+          这条记忆已被清除，正文不可用。
+        </p>
+      )}
+      <dl className="oc-memory-meta">
+        <div>
+          <dt>来源</dt>
+          <dd>
+            {item.sourceLabel}
+            {item.sourceDetail ? ` · ${item.sourceDetail}` : ""}
+          </dd>
+        </div>
+        {item.datasetScopeLabel && (
+          <div>
+            <dt>数据范围</dt>
+            <dd>{item.datasetScopeLabel}</dd>
+          </div>
+        )}
+        <div>
+          <dt>更新</dt>
+          <dd>{item.updatedAtLabel}</dd>
+        </div>
+      </dl>
+      <details className="oc-memory-identities">
+        <summary>技术信息</summary>
+        <dl>
+          <div>
+            <dt>稳定键</dt>
+            <dd>{item.stableKey}</dd>
+          </div>
+          <div>
+            <dt>身份</dt>
+            <dd>
+              item {item.id}
+              {item.versionId ? ` · version ${item.versionId}` : ""}
+            </dd>
+          </div>
+          {item.contentSha256 && (
+            <div>
+              <dt>内容哈希</dt>
+              <dd>{item.contentSha256}</dd>
+            </div>
+          )}
+        </dl>
+      </details>
+      {correcting && item.version !== undefined && (
+        <div className="oc-memory-correction">
+          <label>
+            新版本正文
+            <textarea
+              maxLength={8_000}
+              onChange={(event) => setCorrection(event.currentTarget.value)}
+              rows={4}
+              value={correction}
+            />
+          </label>
+          <div>
+            <button type="button" onClick={() => setCorrecting(false)}>
+              取消
+            </button>
+            <button
+              className="is-primary"
+              disabled={!correction.trim() || pending}
+              type="button"
+              onClick={() =>
+                void runAndClose(
+                  actions?.onCorrectMemory?.(
+                    item.id,
+                    item.version!,
+                    correction.trim(),
+                  ),
+                  () => setCorrecting(false),
+                )
+              }
+            >
+              保存为新版本
+            </button>
+          </div>
+        </div>
+      )}
+      {confirmForget && item.version !== undefined && (
+        <div className="oc-memory-confirm" data-tone="warning">
+          <p>忘记后，未来对话将不再使用这条记忆。</p>
+          <button type="button" onClick={() => setConfirmForget(false)}>
+            取消
+          </button>
+          <button
+            disabled={pending}
+            type="button"
+            onClick={() =>
+              void runAndClose(
+                actions?.onForgetMemory?.(item.id, item.version!),
+                () => setConfirmForget(false),
+              )
+            }
+          >
+            确认忘记
+          </button>
+        </div>
+      )}
+      {confirmPurge && item.version !== undefined && (
+        <div className="oc-memory-confirm" data-tone="danger">
+          <p>
+            彻底删除会清除保存的正文，但不会删除原始对话，也无法撤回已经发送给
+            当前模型的内容。
+          </p>
+          <button type="button" onClick={() => setConfirmPurge(false)}>
+            取消
+          </button>
+          <button
+            className="is-danger"
+            disabled={pending}
+            type="button"
+            onClick={() =>
+              void runAndClose(
+                actions?.onPurgeMemory?.(item.id, item.version!),
+                () => setConfirmPurge(false),
+              )
+            }
+          >
+            确认彻底删除
+          </button>
+        </div>
+      )}
+      <footer>
+        {item.canApprove && item.version !== undefined && (
+          <button
+            disabled={pending}
+            type="button"
+            onClick={() =>
+              void actions?.onApproveMemory?.(item.id, item.version!)
+            }
+          >
+            确认采用
+          </button>
+        )}
+        {item.canCorrect && !correcting && (
+          <button
+            disabled={pending}
+            type="button"
+            onClick={() => {
+              setCorrection(item.content ?? "");
+              setCorrecting(true);
+            }}
+          >
+            纠正
+          </button>
+        )}
+        {item.canForget && !confirmForget && (
+          <button
+            disabled={pending}
+            type="button"
+            onClick={() => setConfirmForget(true)}
+          >
+            忘记
+          </button>
+        )}
+        {item.canPurge && !confirmPurge && (
+          <button
+            className="is-danger"
+            disabled={pending}
+            type="button"
+            onClick={() => setConfirmPurge(true)}
+          >
+            彻底删除
+          </button>
+        )}
+      </footer>
+    </article>
+  );
+}
+
+function MemoryManager({
+  model,
+  actions,
+}: ConversationWorkspaceProps) {
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [kind, setKind] = useState<MemoryKind>("response_preference");
+  const [content, setContent] = useState("");
+  const memory = model.memory;
+  const disabled = memory.loading || memory.commandsPending;
+  const savedMemories = memory.items.filter(
+    (item) => item.status !== "purged",
+  );
+  const purgedMemories = memory.items.filter(
+    (item) => item.status === "purged",
+  );
+  const memoryEnabled =
+    memory.useMemory &&
+    memory.generateCandidates &&
+    memory.enableAgentTools &&
+    memory.providerConsentGranted;
+
+  const create = async () => {
+    const normalized = content.trim();
+    if (!normalized) return;
+    const succeeded = await actions?.onCreateMemory?.({
+      kind,
+      content: normalized,
+    });
+    if (succeeded === true) {
+      setContent("");
+      setCreateOpen(false);
+    }
+  };
+
+  return (
+    <div className="oc-memory-manager">
+      <div className="oc-memory-disclosure">
+        <strong>长期记忆</strong>
+        <p>
+          开启后，Agent 会自动回忆相关背景，也会在发现稳定、可复用的偏好或项目信息时
+          主动提出记忆候选。候选和撤销请求都会在当前时间线等待你确认。
+        </p>
+      </div>
+      {memory.errorMessage && (
+        <div className="oc-memory-error" role="status">
+          <strong>长期记忆暂不可用</strong>
+          <span>
+            {memory.errorMessage}。普通会话仍可继续，本次不会读取历史记忆。
+          </span>
+        </div>
+      )}
+      {memory.commandErrorMessage && (
+        <div className="oc-memory-error" role="alert">
+          <strong>记忆操作未完成</strong>
+          <span>{memory.commandErrorMessage}</span>
+        </div>
+      )}
+      <section className="oc-memory-settings" aria-label="记忆设置">
+        <MemorySettingSwitch
+          checked={memoryEnabled}
+          description="自动回忆相关内容，并主动提议值得长期保留的信息"
+          disabled={disabled || !memory.available}
+          label="跨会话记忆"
+          onChange={(checked) => {
+            if (!checked) {
+              void actions?.onDisableMemory?.();
+            } else if (memory.providerConsentGranted) {
+              void actions?.onGrantMemoryConsentAndEnable?.();
+            } else {
+              setConsentOpen(true);
+            }
+          }}
+        />
+      </section>
+      {consentOpen && (
+        <section
+          aria-labelledby="memory-consent-title"
+          className="oc-memory-consent"
+          role="dialog"
+        >
+          <strong id="memory-consent-title">开启长期记忆</strong>
+          <p>
+            为了在新对话中使用记忆，相关内容会随当前问题发送给你已经配置的
+            LLM。你可以随时关闭、纠正或删除记忆。
+          </p>
+          <div>
+            <button type="button" onClick={() => setConsentOpen(false)}>
+              暂不开启
+            </button>
+            <button
+              className="is-primary"
+              disabled={disabled}
+              type="button"
+              onClick={async () => {
+                if (
+                  (await actions?.onGrantMemoryConsentAndEnable?.()) === true
+                ) {
+                  setConsentOpen(false);
+                }
+              }}
+            >
+              开启
+            </button>
+          </div>
+        </section>
+      )}
+      <details className="oc-memory-delete-boundary">
+        <summary>隐私与授权</summary>
+        <p>
+          只有与当前问题相关的已确认记忆会发送给当前 LLM。关闭后，新对话不再读取
+          记忆；已经发送的内容无法撤回。
+        </p>
+        {memory.providerConsentGranted && (
+          <button
+            disabled={disabled}
+            type="button"
+            onClick={() => void actions?.onRevokeMemoryConsent?.()}
+          >
+            关闭并撤回授权
+          </button>
+        )}
+      </details>
+      <div className="oc-memory-manager-heading">
+        <div>
+          <strong>已保存的记忆</strong>
+          <small>{savedMemories.length} 条</small>
+        </div>
+        <button
+          disabled={disabled || !memory.available}
+          type="button"
+          onClick={() => setCreateOpen((current) => !current)}
+        >
+          {createOpen ? "取消新增" : "新增"}
+        </button>
+      </div>
+      {createOpen && (
+        <section className="oc-memory-create">
+          <label>
+            类型
+            <select
+              onChange={(event) =>
+                setKind(event.currentTarget.value as MemoryKind)
+              }
+              value={kind}
+            >
+              {creatableMemoryKinds.map((value) => (
+                <option key={value} value={value}>
+                  {memoryKindLabels[value]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            需要记住的内容
+            <textarea
+              maxLength={8_000}
+              onChange={(event) => setContent(event.currentTarget.value)}
+              placeholder="例如：回答时先给结论，正文不超过三点"
+              rows={5}
+              value={content}
+            />
+          </label>
+          <p>
+            当前数据得出的科研结论需要由分析流程记录来源，不能在这里手动添加。
+          </p>
+          <button
+            className="is-primary"
+            disabled={
+              disabled ||
+              !content.trim()
+            }
+            type="button"
+            onClick={() => void create()}
+          >
+            保存记忆
+          </button>
+        </section>
+      )}
+      {memory.loading ? (
+        <p className="oc-memory-loading">正在读取长期记忆…</p>
+      ) : savedMemories.length === 0 ? (
+        <InspectorEmpty
+          title="还没有长期记忆"
+          description="在自然对话中表达长期偏好或项目背景，Agent 会按需提出候选；也可以在这里手动新增。"
+        />
+      ) : (
+        <div className="oc-memory-list">
+          {savedMemories.map((item) => (
+            <MemoryItemCard
+              actions={actions}
+              disabled={disabled}
+              item={item}
+              key={`${item.id}:${item.versionId ?? item.status}`}
+            />
+          ))}
+        </div>
+      )}
+      {purgedMemories.length > 0 && (
+        <details className="oc-memory-delete-boundary">
+          <summary>已清除记录 · {purgedMemories.length}</summary>
+          <p>这里只保留不含正文的删除记录，用于避免 Agent 从旧对话重新学习。</p>
+          <div className="oc-memory-list">
+            {purgedMemories.map((item) => (
+              <MemoryItemCard
+                actions={actions}
+                disabled={disabled}
+                item={item}
+                key={`${item.id}:${item.status}`}
+              />
+            ))}
+          </div>
+        </details>
+      )}
+      <details className="oc-memory-delete-boundary">
+        <summary>忘记与彻底删除有什么区别？</summary>
+        <p>
+          “忘记”让未来对话不再使用这条内容；“彻底删除”还会清除保存的正文，并阻止
+          Agent 从旧对话重新学习它。两者都不会删除原始对话。
+        </p>
+      </details>
+    </div>
+  );
+}
+
 function InspectorEmpty({
   title,
   description,
@@ -1285,6 +2192,9 @@ function InspectorPanel({
   const scopedReviews = inScope(model.reviews);
   const scopedArtifacts = inScope(model.artifacts);
   const scopedEvents = inScope(model.events);
+  const savedMemoryCount = model.memory.items.filter(
+    (item) => item.status !== "purged",
+  ).length;
   const counts = useMemo(
     () => ({
       tasks: scopedTasks.length,
@@ -1292,6 +2202,7 @@ function InspectorPanel({
       reviews: scopedReviews.length,
       artifacts: scopedArtifacts.length,
       events: scopedEvents.length,
+      memories: savedMemoryCount,
     }),
     [
       scopedArtifacts,
@@ -1299,6 +2210,7 @@ function InspectorPanel({
       scopedReviews,
       scopedTasks,
       scopedToolExecutions,
+      savedMemoryCount,
     ],
   );
 
@@ -1307,11 +2219,13 @@ function InspectorPanel({
       <header className="oc-inspector-header">
         <div>
           <small>
-            {effectiveScope === "run"
+            {tab === "memories"
+              ? "GLOBAL MEMORY"
+              : effectiveScope === "run"
               ? `RUN ${model.run?.id.slice(0, 8)}`
               : "CONVERSATION"}
           </small>
-          <h2>运行检查器</h2>
+          <h2>{tab === "memories" ? "记忆管理器" : "运行检查器"}</h2>
         </div>
         {onClose && (
           <button
@@ -1324,7 +2238,12 @@ function InspectorPanel({
           </button>
         )}
       </header>
-      <div className="oc-inspector-scope" role="group" aria-label="检查器作用域">
+      <div
+        className="oc-inspector-scope"
+        data-hidden={tab === "memories"}
+        role="group"
+        aria-label="检查器作用域"
+      >
         <button
           className={effectiveScope === "run" ? "is-active" : ""}
           disabled={!model.run}
@@ -1368,10 +2287,15 @@ function InspectorPanel({
           <ArtifactList artifacts={scopedArtifacts} actions={actions} />
         )}
         {tab === "events" && <EventList events={scopedEvents} />}
+        {tab === "memories" && (
+          <MemoryManager actions={actions} model={model} />
+        )}
       </div>
       <footer className="oc-inspector-footer">
         <span className="oc-authority-mark" />
-        PostgreSQL 持久化事件为权威来源
+        {tab === "memories"
+          ? "长期记忆保存在本机 PostgreSQL"
+          : "PostgreSQL 持久化事件为权威来源"}
       </footer>
     </div>
   );
@@ -1414,11 +2338,17 @@ function ErrorWorkspace({
   );
 }
 
-function CommandErrorBanner({ message }: { message?: string }) {
+function CommandErrorBanner({
+  message,
+  title = "操作未完成",
+}: {
+  message?: string;
+  title?: string;
+}) {
   if (!message) return null;
   return (
     <div className="oc-command-error" role="alert">
-      <strong>操作未完成</strong>
+      <strong>{title}</strong>
       <span>{message}</span>
     </div>
   );
@@ -1426,12 +2356,34 @@ function CommandErrorBanner({ message }: { message?: string }) {
 
 function Composer({ model, actions }: ConversationWorkspaceProps) {
   const [draft, setDraft] = useState("");
+  const memoryEnabled =
+    model.memory.available &&
+    model.memory.useMemory &&
+    model.memory.generateCandidates &&
+    model.memory.enableAgentTools &&
+    model.memory.providerConsentGranted;
+  const submissionMemoryMode: MemoryRunMode = memoryEnabled
+    ? "default"
+    : "off";
+  const memoryCommandPending = model.memory.commandsPending;
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const instruction = draft.trim();
-    if (!instruction || model.composer.disabled) return;
+    if (
+      !instruction ||
+      model.composer.disabled ||
+      memoryCommandPending
+    ) {
+      return;
+    }
     try {
-      if ((await actions?.onSubmit?.(instruction)) === true) {
+      const memorySnapshot = {
+        mode: submissionMemoryMode,
+        refs: [],
+      } as const;
+      if (
+        (await actions?.onSubmit?.(instruction, memorySnapshot)) === true
+      ) {
         setDraft("");
       }
     } catch {
@@ -1440,6 +2392,17 @@ function Composer({ model, actions }: ConversationWorkspaceProps) {
   };
   return (
     <form className="oc-composer" onSubmit={submit}>
+      <div className="oc-composer-memory">
+        <span data-enabled={memoryEnabled}>
+          <strong>{memoryEnabled ? "记忆已开启" : "记忆未启用"}</strong>
+          {" · "}
+          {!model.memory.available
+            ? "服务不可用，本次按普通会话执行"
+            : memoryEnabled
+              ? "会自动使用与当前问题相关的内容"
+              : "可在右侧记忆面板中开启"}
+        </span>
+      </div>
       <div className="oc-composer-field">
         <textarea
           aria-label="分析指令"
@@ -1451,7 +2414,11 @@ function Composer({ model, actions }: ConversationWorkspaceProps) {
         />
         <button
           aria-label="发送分析指令"
-          disabled={model.composer.disabled || !draft.trim()}
+          disabled={
+            model.composer.disabled ||
+            memoryCommandPending ||
+            !draft.trim()
+          }
           type="submit"
         >
           <Icon name="send" />
@@ -1463,7 +2430,9 @@ function Composer({ model, actions }: ConversationWorkspaceProps) {
         </span>
         <span>
           {model.composer.disabledReason ||
-            "Agent 会按需直接回复、加载 Skill 或调用 Tool"}
+            (memoryCommandPending
+              ? "记忆设置正在确认，完成后才能发送"
+              : "Agent 会按需直接回复、加载 Skill 或调用 Tool")}
         </span>
       </div>
     </form>
@@ -1556,6 +2525,10 @@ export function ConversationWorkspace({
           label={model.connectionLabel}
         />
         <CommandErrorBanner message={model.commandErrorMessage} />
+        <CommandErrorBanner
+          message={model.memory.commandErrorMessage}
+          title="记忆操作未完成"
+        />
         <div className="oc-workspace-content">
           {model.viewState === "loading" && <LoadingWorkspace />}
           {model.viewState === "error" && (
@@ -1565,7 +2538,13 @@ export function ConversationWorkspace({
             />
           )}
           {(model.viewState === "ready" || model.viewState === "empty") && (
-            <Timeline items={model.timeline} actions={actions} />
+            <Timeline
+              actions={actions}
+              items={model.timeline}
+              memoryCommand={model.memory.command}
+              memoryCommandsPending={model.memory.commandsPending}
+              memories={model.memory.items}
+            />
           )}
         </div>
         {(model.viewState === "ready" || model.viewState === "empty") && (

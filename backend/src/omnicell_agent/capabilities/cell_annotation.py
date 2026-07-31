@@ -20,6 +20,7 @@ from .contracts import (
     InspectMarkerTableRequest,
     InspectMarkerTableResult,
     MarkerClusterSummary,
+    MarkerSelectionEvidence,
 )
 from .errors import CapabilityExecutionError, CapabilityInputError
 from .registry import CapabilityContext
@@ -38,7 +39,17 @@ def _needs_manual_review(annotation: Mapping[str, Any]) -> bool:
     return (
         score < 75.0
         or bool(flags)
+        or _validator_status(annotation) != "supported"
     )
+
+
+def _validator_status(
+    annotation: Mapping[str, Any],
+) -> str:
+    status = str(annotation.get("validator_status") or "not_run")
+    if status not in {"supported", "unsupported", "failed", "not_run"}:
+        return "not_run"
+    return status
 
 
 def _cluster_sort_key(cluster_id: str) -> tuple[int, int | str]:
@@ -84,6 +95,7 @@ def _annotation_summary(
         ),
         confidence_score=score,
         flags=flags,
+        validator_status=_validator_status(annotation),
         requires_manual_review=_needs_manual_review(annotation),
     )
 
@@ -215,9 +227,31 @@ class CellAnnotationCapability:
                 pinned_input,
                 expected_kind="marker_table",
             )
-        expected_clusters = {marker.cluster_id for marker in contract.markers}
-        if not expected_clusters:
+        marker_clusters = {marker.cluster_id for marker in contract.markers}
+        if not marker_clusters:
             raise CapabilityInputError("marker contract 不包含可注释 cluster")
+        raw_selection = contract.metadata.get("selection")
+        if raw_selection is None:
+            raise CapabilityInputError(
+                "细胞类型注释要求完整的 marker selection evidence；"
+                "缺失时不能推断 cluster 覆盖完整"
+            )
+        try:
+            marker_selection = MarkerSelectionEvidence.model_validate(
+                raw_selection
+            )
+        except Exception as exc:
+            raise CapabilityInputError(
+                "marker contract 的 selection evidence 无效"
+            ) from exc
+        if marker_clusters != set(marker_selection.reported_clusters):
+            raise CapabilityInputError(
+                "marker contract 行与 reported cluster coverage 不一致"
+            )
+        expected_clusters = set(marker_selection.all_clusters)
+        omitted_marker_clusters = dict(
+            marker_selection.omitted_clusters
+        )
         initial_state = {
             "contract_file_path": str(contract_path),
             "species": typed.species,
@@ -229,14 +263,57 @@ class CellAnnotationCapability:
 
         cluster_annotations = dict(final_state.get("cluster_annotations") or {})
         final_report = str(final_state.get("final_report") or "")
+        if not final_report.strip() or final_report.startswith("Error:"):
+            raise CapabilityExecutionError(
+                "细胞类型注释未生成有效 annotation report"
+            )
         actual_clusters = set(cluster_annotations)
-        if actual_clusters != expected_clusters:
+        unexpected_clusters = actual_clusters - expected_clusters
+        if unexpected_clusters:
+            raise CapabilityExecutionError(
+                "细胞类型注释返回了输入证据之外的 cluster："
+                f"{sorted(unexpected_clusters)}"
+            )
+        missing_clusters = expected_clusters - actual_clusters
+        unaccounted_missing = missing_clusters - set(
+            omitted_marker_clusters
+        )
+        if unaccounted_missing:
             raise CapabilityExecutionError(
                 "细胞类型注释未完整收敛："
-                f"expected={sorted(expected_clusters)}, actual={sorted(actual_clusters)}"
+                f"missing={sorted(unaccounted_missing)}"
             )
-        if not final_report.strip() or final_report.startswith("Error:"):
-            raise CapabilityExecutionError("细胞类型注释未生成有效 annotation report")
+        for cluster_id in sorted(
+            missing_clusters,
+            key=_cluster_sort_key,
+        ):
+            cluster_annotations[cluster_id] = {
+                "general_type": "Unknown",
+                "sub_type": "Unknown",
+                "cs_score": 0.0,
+                "validator_status": "not_run",
+                "flags": [
+                    "marker_coverage_incomplete",
+                    "needs_review",
+                ],
+                "marker_omission_reason": omitted_marker_clusters[cluster_id],
+            }
+        if missing_clusters:
+            final_report = (
+                final_report.rstrip()
+                + "\n\n## Marker coverage 未覆盖的 cluster\n\n"
+                + "\n".join(
+                    (
+                        f"- Cluster **{cluster_id}**："
+                        f"{omitted_marker_clusters[cluster_id]}，"
+                        "未生成自动标签，必须人工复核。"
+                    )
+                    for cluster_id in sorted(
+                        missing_clusters,
+                        key=_cluster_sort_key,
+                    )
+                )
+            )
         for annotation in cluster_annotations.values():
             if not isinstance(annotation, Mapping):
                 raise TypeError("cluster annotation 必须是 mapping")
@@ -263,6 +340,10 @@ class CellAnnotationCapability:
             "species": typed.species,
             "tissue": typed.tissue,
             "cluster_count": cluster_count,
+            "marker_coverage_complete": not omitted_marker_clusters,
+            "omitted_marker_cluster_count": len(
+                omitted_marker_clusters
+            ),
         }
         annotations_ref = context.artifacts.write_json(
             f"{output_root}/annotations.json",
@@ -293,6 +374,8 @@ class CellAnnotationCapability:
             report=report_ref,
             cluster_count=cluster_count,
             manual_review_count=manual_review_count,
+            marker_coverage_complete=not omitted_marker_clusters,
+            omitted_marker_cluster_count=len(omitted_marker_clusters),
             cluster_summaries=cluster_summaries,
         )
 

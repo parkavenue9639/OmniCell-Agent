@@ -137,6 +137,14 @@ def process_cluster_wrapper(state: ClusterAnnotationState) -> Dict[str, Any]:
         preds["self_consistency_ok"] = float(q.get("self_consistency_ok", 1.0))
     except (TypeError, ValueError):
         preds["self_consistency_ok"] = 1.0
+    if bool(q.get("validator_failed", False)):
+        preds["validator_status"] = "failed"
+    elif q.get("validator_supported") is False:
+        preds["validator_status"] = "unsupported"
+    elif q.get("validator_supported") is True:
+        preds["validator_status"] = "supported"
+    else:
+        preds["validator_status"] = "not_run"
 
     cs = float(q.get("cs_score", 0.0))
 
@@ -148,10 +156,15 @@ def process_cluster_wrapper(state: ClusterAnnotationState) -> Dict[str, Any]:
         pass
     if bool(q.get("boost_applied", False)):
         flags.append("boosted")
+    if preds["validator_status"] == "failed":
+        flags.append("validator_failed")
+    elif preds["validator_status"] == "unsupported":
+        flags.append("validator_unsupported")
     if (
         cs < 75.0
         or preds.get("sub_type") in {None, "", "Unknown"}
         or bool(q.get("annotation_failed", False))
+        or preds["validator_status"] != "supported"
     ):
         flags.append("needs_review")
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
@@ -119,12 +120,45 @@ class _ControlledGraph:
     def invoke(self, state: dict[str, Any]) -> dict[str, Any]:
         self.initial_state = state
         workspace = Path(state["task_context"]["conversation_workspace"])
-        marker_relative = state["marker_table_path"][len("/app/data/") :]
+        output_root = state["marker_table_path"].rsplit("/", 1)[0]
+        attempt_root = f"{output_root}/attempt-00-00"
+        marker_sandbox_path = f"{attempt_root}/markers.json"
+        marker_relative = marker_sandbox_path[len("/app/data/") :]
         if not self.aborted and not self.incomplete and not self.omit_marker:
             marker_path = workspace / marker_relative
             marker_path.parent.mkdir(parents=True)
             marker_path.write_text(
-                """[{"gene":"IL7R","cluster":"0","pvals":0.001,"pvals_adj":0.01,"logfoldchanges":2.5,"pct.1":0.8,"pct.2":0.1}]""",
+                json.dumps(
+                    {
+                        "metadata": {
+                            "selection": {
+                                "statistical_input": "adata.X",
+                                "method": "wilcoxon",
+                                "adjusted_p_value_max": 0.05,
+                                "min_log2_fold_change": 1.0,
+                                "top_n_per_cluster": 50,
+                                "all_clusters": ["0"],
+                                "tested_clusters": ["0"],
+                                "reported_clusters": ["0"],
+                                "omitted_clusters": {},
+                                "selected_counts": {"0": 1},
+                                "marker_count": 1,
+                                "thresholds_strict": True,
+                            }
+                        },
+                        "markers": [
+                            {
+                                "gene": "IL7R",
+                                "cluster": "0",
+                                "pvals": 0.001,
+                                "pvals_adj": 0.01,
+                                "logfoldchanges": 2.5,
+                                "pct.1": 0.8,
+                                "pct.2": 0.1,
+                            }
+                        ],
+                    }
+                ),
                 encoding="utf-8",
             )
         status = "error" if self.aborted or self.incomplete else "success"
@@ -149,6 +183,16 @@ class _ControlledGraph:
                 },
                 "eval_record": {"status": status, "feedback": "boom" if status == "error" else ""},
                 "retry_count": retries,
+                **(
+                    {
+                        "successful_output_roots": [attempt_root],
+                        "successful_marker_table_paths": [
+                            marker_sandbox_path
+                        ],
+                    }
+                    if status == "success"
+                    else {}
+                ),
             },
             "sandbox_execution_result": {
                 "status": status,
@@ -174,7 +218,11 @@ def test_exploratory_analysis_owns_scope_and_returns_artifact_projection(
         scope_factory=scope_factory,
     )
     result = capability.invoke(
-        ExploratoryAnalysisRequest(dataset=dataset, goal="提取 marker"),
+        ExploratoryAnalysisRequest(
+            dataset=dataset,
+            goal="提取 marker",
+            acceptance_criterion="marker_table",
+        ),
         context,
     )
 
@@ -201,7 +249,11 @@ def test_exploratory_analysis_projects_max_retry_as_aborted(tmp_path: Path) -> N
     )
 
     result = capability.invoke(
-        ExploratoryAnalysisRequest(dataset=dataset, goal="失败路径"),
+        ExploratoryAnalysisRequest(
+            dataset=dataset,
+            goal="失败路径",
+            acceptance_criterion="other",
+        ),
         context,
     )
 
@@ -224,6 +276,7 @@ def test_exploratory_analysis_allows_completed_non_marker_goal_without_marker(
         ExploratoryAnalysisRequest(
             dataset=dataset,
             goal="生成一个不涉及 marker 的统计摘要",
+            acceptance_criterion="other",
         ),
         context,
     )
@@ -250,7 +303,9 @@ def test_exploratory_analysis_rejects_marker_symlink_before_contract_parser(
         def invoke(self, state: dict[str, Any]) -> dict[str, Any]:
             result = super().invoke(state)
             workspace = Path(state["task_context"]["conversation_workspace"])
-            marker_relative = state["marker_table_path"][len("/app/data/") :]
+            marker_relative = result["task_context"][
+                "successful_marker_table_paths"
+            ][0][len("/app/data/") :]
             marker_path = workspace / marker_relative
             marker_path.unlink()
             marker_path.symlink_to(outside_marker)
@@ -273,7 +328,11 @@ def test_exploratory_analysis_rejects_marker_symlink_before_contract_parser(
 
     with pytest.raises(ArtifactBoundaryError, match="symlink"):
         capability.invoke(
-            ExploratoryAnalysisRequest(dataset=dataset, goal="拒绝 marker symlink"),
+            ExploratoryAnalysisRequest(
+                dataset=dataset,
+                goal="拒绝 marker symlink",
+                acceptance_criterion="marker_table",
+            ),
             context,
         )
 
@@ -323,7 +382,11 @@ def test_exploratory_analysis_rejects_marker_replacement_before_contract_parser(
 
     with pytest.raises(CapabilityExecutionError, match="生成的 marker contract 无效"):
         capability.invoke(
-            ExploratoryAnalysisRequest(dataset=dataset, goal="拒绝 marker 替换"),
+            ExploratoryAnalysisRequest(
+                dataset=dataset,
+                goal="拒绝 marker 替换",
+                acceptance_criterion="marker_table",
+            ),
             context,
         )
 
@@ -339,7 +402,11 @@ def test_exploratory_analysis_rejects_non_terminal_projection(tmp_path: Path) ->
 
     with pytest.raises(RuntimeError, match="未达到"):
         capability.invoke(
-            ExploratoryAnalysisRequest(dataset=dataset, goal="非终态"),
+            ExploratoryAnalysisRequest(
+                dataset=dataset,
+                goal="非终态",
+                acceptance_criterion="other",
+            ),
             context,
         )
 
@@ -396,6 +463,10 @@ def test_exploratory_analysis_preserves_controlled_engine_contract(
         def start(self) -> None:
             self.start_calls += 1
 
+        def ensure_dir(self, path: str) -> None:
+            relative = path.removeprefix("/app/data/")
+            (self.workspace / relative).mkdir(parents=True, exist_ok=True)
+
         def execute_code(self, code: str) -> dict[str, Any]:
             self.executed_code.append(code)
             if code.startswith("raw_data_path = "):
@@ -436,7 +507,11 @@ def test_exploratory_analysis_preserves_controlled_engine_contract(
         )
     )
     result = capability.invoke(
-        ExploratoryAnalysisRequest(dataset=dataset, goal="分析 PBMC"),
+        ExploratoryAnalysisRequest(
+            dataset=dataset,
+            goal="分析 PBMC",
+            acceptance_criterion="other",
+        ),
         context,
     )
 

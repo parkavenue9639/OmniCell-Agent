@@ -354,6 +354,7 @@ class ConversationArtifactStore:
         before: frozenset[str],
         *,
         within_output_scope: bool = False,
+        allowed_relative_prefixes: tuple[str, ...] | None = None,
     ) -> list[ArtifactRef]:
         refs: list[ArtifactRef] = []
         candidates = self.snapshot_files() - before
@@ -365,6 +366,20 @@ class ConversationArtifactStore:
                 relative
                 for relative in candidates
                 if relative.startswith(f"{scope}/")
+            )
+        if allowed_relative_prefixes is not None:
+            prefixes = tuple(
+                self._validate_relative(prefix).as_posix().rstrip("/")
+                for prefix in allowed_relative_prefixes
+            )
+            candidates = frozenset(
+                relative
+                for relative in candidates
+                if any(
+                    relative == prefix
+                    or relative.startswith(f"{prefix}/")
+                    for prefix in prefixes
+                )
             )
         for relative in sorted(candidates):
             path = self.workspace / relative

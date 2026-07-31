@@ -143,9 +143,17 @@ def run_executor(state: ExploratoryAnalysisState) -> dict:
             state,
             "marker_table_path",
         )
-        artifact_output_root = marker_table_path.rsplit("/", 1)[0]
+        base_output_root = marker_table_path.rsplit("/", 1)[0]
         plan_steps = state.get("plan_steps", [])
         current_index = int(state.get("current_step_index", 0) or 0)
+        retry_count = int(
+            (state.get("task_context") or {}).get("retry_count", 0) or 0
+        )
+        artifact_output_root = (
+            f"{base_output_root}/attempt-{current_index:02d}-{retry_count:02d}"
+        )
+        marker_table_path = f"{artifact_output_root}/markers.json"
+        session.ensure_dir(artifact_output_root)
         tool_parameters: dict[str, object] = {}
         if current_index < len(plan_steps):
             current_step = plan_steps[current_index]
@@ -201,7 +209,13 @@ def run_executor(state: ExploratoryAnalysisState) -> dict:
             session.execute_code(cleanup_backup_code)
 
         # 结果包装回传
-        return {"sandbox_execution_result": result}
+        return {
+            "sandbox_execution_result": {
+                **result,
+                "attempt_output_root": artifact_output_root,
+                "attempt_marker_table_path": marker_table_path,
+            }
+        }
     except Exception as e:
         logger.error(f"Sandbox execution fatal error: {e}")
         return {"sandbox_execution_result": {"status": "error", "error": str(e)}}

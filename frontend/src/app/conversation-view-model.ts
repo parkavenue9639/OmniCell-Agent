@@ -1,6 +1,8 @@
 import type {
   Artifact,
   Conversation,
+  Memory,
+  MemorySettings,
   Review,
   Run,
 } from "../api";
@@ -10,16 +12,21 @@ import type {
   ConnectionState,
   ConversationWorkspaceViewModel,
   EventViewModel,
+  MemoryCommandViewModel,
   ReviewViewModel,
   RunState,
   TaskViewModel,
   TimelineItem,
+  TimelineMemoryItem,
   ToolExecutionViewModel,
   ToolFamily,
   WorkItemState,
 } from "../features/conversations";
 import type { RunProjection } from "../projector/model";
-import type { PersistedEvent } from "../generated/events-v1";
+import type {
+  MemoryContextInputPayload,
+  PersistedEvent,
+} from "../generated/events-v1";
 import type { ConnectionState as StreamConnectionState } from "../stores/connections";
 
 const RUN_LABELS: Record<RunState, string> = {
@@ -44,6 +51,15 @@ const WORK_LABELS: Record<WorkItemState, string> = {
 };
 
 const TERMINAL_RUNS = new Set<RunState>(["completed", "failed", "cancelled"]);
+
+// Keep public Memory event names in one place so a future contract rename is
+// mechanical instead of being coupled to timeline presentation details.
+const MEMORY_EVENT_TYPES = {
+  snapshot: "memory.context_loaded",
+  search: "memory.search_completed",
+  proposal: "memory.proposal_created",
+  forget: "memory.forget_requested",
+} as const;
 
 function runState(value: string | undefined): RunState {
   switch (value) {
@@ -184,6 +200,11 @@ function eventSummary(type: string | undefined): string {
   const labels: Record<string, string> = {
     "run.created": "运行已创建",
     "run.started": "运行开始执行",
+    [MEMORY_EVENT_TYPES.snapshot]:
+      "Memory Plane 已冻结当前 Run 的记忆上下文",
+    [MEMORY_EVENT_TYPES.search]: "Agent 按需扩展了当前 Run 的记忆上下文",
+    [MEMORY_EVENT_TYPES.proposal]: "Agent 创建了待确认的记忆提议",
+    [MEMORY_EVENT_TYPES.forget]: "Agent 请求确认遗忘一条记忆",
     "agent.turn_started": "Agent 开始新一轮推理",
     "agent.tool_started": "Agent 发起 Tool 调用",
     "agent.tool_completed": "Agent Tool 调用完成",
@@ -220,6 +241,18 @@ function eventTone(
 ): "neutral" | "active" | "success" | "warning" | "danger" {
   const type = event.type;
   if (
+    type === MEMORY_EVENT_TYPES.snapshot &&
+    event.payload.outcome === "degraded"
+  ) {
+    return "warning";
+  }
+  if (
+    type === MEMORY_EVENT_TYPES.proposal ||
+    type === MEMORY_EVENT_TYPES.forget
+  ) {
+    return "warning";
+  }
+  if (
     type === "capability.completed" &&
     event.payload.result_status !== null &&
     event.payload.result_status !== undefined &&
@@ -244,6 +277,8 @@ function eventTone(
     return "warning";
   }
   if (
+    type === MEMORY_EVENT_TYPES.snapshot ||
+    type === MEMORY_EVENT_TYPES.search ||
     type === "run.completed" ||
     type === "skill.load_completed" ||
     type === "agent.tool_completed" ||
@@ -301,6 +336,72 @@ function eventMetadata(event: PersistedEvent): EventViewModel["metadata"] {
       append("turn_index", payload.turn_index);
       append("remaining_turns", payload.remaining_turns);
       break;
+    case MEMORY_EVENT_TYPES.snapshot:
+      append("snapshot_id", payload.snapshot_id);
+      append("scope_key", payload.scope_key);
+      append("mode", payload.mode);
+      append("outcome", payload.outcome);
+      append("content_bytes", payload.content_bytes);
+      append("degraded_code", payload.degraded_code);
+      if (Array.isArray(payload.inputs)) {
+        payload.inputs.forEach((input, index) => {
+          if (input === null || typeof input !== "object") return;
+          const identity = input as Record<string, unknown>;
+          append(
+            `input_${index + 1}`,
+            [
+              identity.item_id,
+              identity.version_id,
+              `v${identity.version_number}`,
+              identity.kind,
+              identity.source_kind,
+              identity.selection_reason,
+            ]
+              .filter((value) => value !== undefined)
+              .join(" · "),
+          );
+        });
+      }
+      break;
+    case MEMORY_EVENT_TYPES.search:
+      append("tool_call_id", payload.tool_call_id);
+      append("outcome", payload.outcome);
+      if (Array.isArray(payload.inputs)) {
+        payload.inputs.forEach((input, index) => {
+          if (input === null || typeof input !== "object") return;
+          const identity = input as Record<string, unknown>;
+          append(
+            `input_${index + 1}`,
+            [
+              identity.item_id,
+              identity.version_id,
+              `v${identity.version_number}`,
+              identity.kind,
+              identity.source_kind,
+              identity.selection_reason,
+            ]
+              .filter((value) => value !== undefined)
+              .join(" · "),
+          );
+        });
+      }
+      break;
+    case MEMORY_EVENT_TYPES.proposal:
+    case MEMORY_EVENT_TYPES.forget: {
+      append("tool_call_id", payload.tool_call_id);
+      append("status", payload.status);
+      const identity = payload.memory;
+      if (identity !== null && typeof identity === "object") {
+        const memory = identity as Record<string, unknown>;
+        append("item_id", memory.item_id);
+        append("version_id", memory.version_id);
+        append("version_number", memory.version_number);
+        append("kind", memory.kind);
+        append("source_kind", memory.source_kind);
+        append("selection_reason", memory.selection_reason);
+      }
+      break;
+    }
     case "agent.tool_started":
     case "agent.tool_completed":
     case "agent.tool_failed":
@@ -435,6 +536,16 @@ function eventMetadata(event: PersistedEvent): EventViewModel["metadata"] {
 
 function eventContext(event: PersistedEvent): string | undefined {
   const payload = event.payload as unknown as Record<string, unknown>;
+  if (event.type === MEMORY_EVENT_TYPES.snapshot) {
+    return `Memory Plane · ${String(payload.mode)} · ${String(payload.outcome)}`;
+  }
+  if (
+    event.type === MEMORY_EVENT_TYPES.search ||
+    event.type === MEMORY_EVENT_TYPES.proposal ||
+    event.type === MEMORY_EVENT_TYPES.forget
+  ) {
+    return `Memory Plane · ${String(payload.status ?? payload.outcome)}`;
+  }
   const value =
     payload.tool_name ??
     payload.capability_name ??
@@ -505,6 +616,192 @@ function resultOrFallback(
   return `${toolTitle(name)}已完成${artifactSummary}`;
 }
 
+function memoryIdentity(
+  input: MemoryContextInputPayload,
+): TimelineMemoryItem["identities"][number] {
+  return {
+    itemId: input.item_id,
+    versionId: input.version_id,
+    version: input.version_number,
+    kind: input.kind,
+    source: input.source_kind,
+    reason: input.selection_reason,
+  };
+}
+
+function memoryTimelineItem(
+  event: PersistedEvent,
+  occurredAtLabel: string,
+): TimelineMemoryItem | undefined {
+  switch (event.type) {
+    case MEMORY_EVENT_TYPES.snapshot: {
+      const identities = (event.payload.inputs ?? []).map(memoryIdentity);
+      const outcome = event.payload.outcome;
+      return {
+        id: event.event_id,
+        kind: "memory",
+        operation: "snapshot",
+        mode: event.payload.mode,
+        outcome,
+        title: "检查相关记忆",
+        description: "回答当前问题前，系统会自动查找已经确认的长期记忆",
+        actionSummary: "选择与当前问题相关且仍然有效的记忆",
+        stateLabel:
+          outcome === "loaded"
+            ? "已加载"
+            : outcome === "empty"
+              ? "无匹配记忆"
+              : "降级关闭",
+        process: [
+          {
+            label: "查找相关记忆",
+            detail: "只检查已经确认且未被忘记的内容",
+            state: "completed",
+          },
+          {
+            label: "验证记忆状态",
+            detail:
+              identities.length > 0
+                ? `${identities.length} 条记忆可用于当前回答`
+                : "没有找到与当前问题匹配的记忆",
+            state: outcome === "degraded" ? "failed" : "completed",
+          },
+          {
+            label:
+              outcome === "loaded"
+                ? "为当前回答提供相关背景"
+                : outcome === "empty"
+                  ? "按普通对话继续"
+                  : "本次不使用记忆",
+            detail:
+              outcome === "degraded"
+                ? (event.payload.degraded_code ?? "memory_retrieval_unavailable")
+                : undefined,
+            state: outcome === "degraded" ? "failed" : "completed",
+          },
+        ],
+        resultSummary:
+          outcome === "loaded"
+            ? `当前回答使用了 ${identities.length} 条相关记忆`
+            : outcome === "empty"
+              ? "没有匹配的长期记忆，按普通对话继续"
+              : "记忆暂时不可用，已按普通对话继续",
+        identities,
+        degradedCode: event.payload.degraded_code ?? undefined,
+        occurredAtLabel,
+      };
+    }
+    case MEMORY_EVENT_TYPES.search: {
+      const identities = (event.payload.inputs ?? []).map(memoryIdentity);
+      const loaded = event.payload.outcome === "loaded";
+      return {
+        id: event.event_id,
+        kind: "memory",
+        operation: "search",
+        outcome: event.payload.outcome,
+        title: "继续查找历史背景",
+        description: "Agent 发现当前问题还需要更多已保存的背景",
+        actionSummary: "从已经确认的长期记忆中继续查找相关内容",
+        stateLabel: loaded ? "已找到" : "无匹配记忆",
+        process: [
+          {
+            label: "查找更多相关记忆",
+            detail: "只在当前问题确实需要时执行",
+            state: "completed",
+          },
+          {
+            label: "验证记忆状态",
+            detail: loaded
+              ? `${identities.length} 条记忆可用`
+              : "没有找到更多相关记忆",
+            state: "completed",
+          },
+          {
+            label: loaded
+              ? "用于当前回答"
+              : "使用现有上下文继续",
+            state: "completed",
+          },
+        ],
+        resultSummary: loaded
+          ? `又找到 ${identities.length} 条相关记忆`
+          : "没有找到更多记忆，继续当前回答",
+        identities,
+        occurredAtLabel,
+      };
+    }
+    case MEMORY_EVENT_TYPES.proposal: {
+      const identity = memoryIdentity(event.payload.memory);
+      return {
+        id: event.event_id,
+        kind: "memory",
+        operation: "proposal",
+        outcome: event.payload.status,
+        title: "有一条记忆待确认",
+        description:
+          "Agent 将你刚才的整条用户消息选为候选，没有摘要、抽取或改写",
+        actionSummary:
+          "候选已按整条来源消息保存；确认后才会用于未来相关对话",
+        stateLabel: "待确认",
+        process: [
+          {
+            label: "检查内容是否适合长期保存",
+            detail: "敏感数据和当前数据集结论不会自动保存",
+            state: "completed",
+          },
+          {
+            label: "保存整条来源消息为候选",
+            detail: "候选已持久化，但确认前不会影响未来回答",
+            state: "completed",
+          },
+          {
+            label: "等待你的确认",
+            detail: "可以直接在这里确认记住",
+            state: "pending",
+          },
+        ],
+        resultSummary: "候选已保存但尚未采用；请核对完整原文",
+        identities: [identity],
+        occurredAtLabel,
+      };
+    }
+    case MEMORY_EVENT_TYPES.forget: {
+      const identity = memoryIdentity(event.payload.memory);
+      return {
+        id: event.event_id,
+        kind: "memory",
+        operation: "forget",
+        outcome: event.payload.status,
+        title: "确认忘记这条内容",
+        description: "Agent 已找到你想忘记的记忆，确认后未来对话将不再使用",
+        actionSummary: "先确认目标，避免误删长期记忆",
+        stateLabel: "等待确认",
+        process: [
+          {
+            label: "找到目标记忆",
+            state: "completed",
+          },
+          {
+            label: "准备忘记",
+            detail: "确认前不会改变现有记忆",
+            state: "completed",
+          },
+          {
+            label: "等待你的确认",
+            detail: "需要彻底删除正文时，可稍后在记忆管理中操作",
+            state: "pending",
+          },
+        ],
+        resultSummary: "尚未忘记；请确认是否停止在未来对话中使用",
+        identities: [identity],
+        occurredAtLabel,
+      };
+    }
+    default:
+      return undefined;
+  }
+}
+
 function runTimeline(
   projection: RunProjection | undefined,
   pendingReviewId: string | undefined,
@@ -514,7 +811,10 @@ function runTimeline(
   const items: TimelineItem[] = [];
   for (const event of projection.events) {
     const when = dateLabel(event.occurred_at);
-    if (event.type === "run.started") {
+    const memoryItem = memoryTimelineItem(event, when);
+    if (memoryItem !== undefined) {
+      items.push(memoryItem);
+    } else if (event.type === "run.started") {
       items.push({
         id: event.event_id,
         kind: "notice",
@@ -1043,6 +1343,15 @@ export interface BuildConversationViewModelOptions {
   readonly projections?: readonly RunProjection[];
   readonly projection?: RunProjection;
   readonly connection?: StreamConnectionState;
+  readonly memory?: {
+    readonly settings?: MemorySettings;
+    readonly items?: readonly Memory[];
+    readonly loading: boolean;
+    readonly errorMessage?: string;
+    readonly commandErrorMessage?: string;
+    readonly commandsPending: boolean;
+    readonly command?: MemoryCommandViewModel;
+  };
   readonly pending: {
     readonly createConversation: boolean;
     readonly uploadDataset: boolean;
@@ -1051,6 +1360,83 @@ export interface BuildConversationViewModelOptions {
     readonly reviewId?: string;
     readonly artifactId?: string;
   };
+}
+
+const MEMORY_KIND_LABELS = {
+  response_preference: "回复偏好",
+  profile_fact: "个人事实",
+  project_context: "项目上下文",
+  scientific_observation: "科研观察",
+} as const;
+
+const MEMORY_STATUS_LABELS = {
+  proposed: "待确认",
+  active: "已生效",
+  revoked: "已遗忘",
+  purged: "已清除",
+} as const;
+
+function memorySourceLabel(memory: Memory): {
+  label: string;
+  detail?: string;
+} {
+  if (memory.source === null || memory.source === undefined) {
+    return { label: "来源未提供" };
+  }
+  const label = {
+    explicit: "显式创建",
+    proposed: "Agent 候选",
+    corrected: "用户纠正",
+  }[memory.source.source_kind];
+  const identities = [
+    memory.source.conversation_id
+      ? `conversation ${memory.source.conversation_id.slice(0, 8)}`
+      : undefined,
+    memory.source.run_id
+      ? `run ${memory.source.run_id.slice(0, 8)}`
+      : undefined,
+    (memory.source.message_ids ?? []).length > 0
+      ? `${(memory.source.message_ids ?? []).length} 条 source message`
+      : undefined,
+  ].filter((value): value is string => value !== undefined);
+  return { label, detail: identities.join(" · ") || undefined };
+}
+
+function memoryModels(memories: readonly Memory[]) {
+  return memories.map((memory) => {
+    const source = memorySourceLabel(memory);
+    const datasetScope = memory.dataset_scope
+      ? Object.entries(memory.dataset_scope)
+          .map(([key, value]) => `${key}=${value}`)
+          .join(" · ")
+      : undefined;
+    const version = memory.current_version ?? undefined;
+    return {
+      id: memory.memory_id,
+      stableKey: memory.stable_key,
+      kind: memory.kind,
+      kindLabel: MEMORY_KIND_LABELS[memory.kind],
+      status: memory.status,
+      statusLabel: MEMORY_STATUS_LABELS[memory.status],
+      version,
+      versionId: memory.version_id ?? undefined,
+      content: memory.content ?? undefined,
+      contentSha256: memory.content_sha256 ?? undefined,
+      sourceLabel: source.label,
+      sourceDetail: source.detail,
+      datasetScopeLabel: datasetScope || undefined,
+      createdAtLabel: dateLabel(memory.created_at),
+      updatedAtLabel: dateLabel(memory.updated_at),
+      canApprove: memory.status === "proposed" && version !== undefined,
+      canCorrect:
+        (memory.status === "active" || memory.status === "proposed") &&
+        version !== undefined,
+      canForget:
+        (memory.status === "active" || memory.status === "proposed") &&
+        version !== undefined,
+      canPurge: memory.status !== "purged" && version !== undefined,
+    };
+  });
 }
 
 export function buildConversationViewModel(
@@ -1123,6 +1509,29 @@ export function buildConversationViewModel(
     ),
     artifacts: artifactModels(options.artifacts, options.pending.artifactId),
     events: projections.flatMap((projection) => eventModels(projection)),
+    memory: {
+      available:
+        options.memory?.settings !== undefined &&
+        options.memory.errorMessage === undefined,
+      loading: options.memory?.loading ?? false,
+      errorMessage: options.memory?.errorMessage,
+      commandErrorMessage: options.memory?.commandErrorMessage,
+      useMemory: options.memory?.settings?.use_memory ?? false,
+      generateCandidates:
+        options.memory?.settings?.generate_candidates ?? false,
+      enableAgentTools:
+        options.memory?.settings?.enable_agent_tools ?? false,
+      providerConsentGranted:
+        options.memory?.settings?.provider_consent_granted ?? false,
+      providerConsentVersion:
+        options.memory?.settings?.provider_consent_version ?? undefined,
+      providerConsentedAtLabel: options.memory?.settings?.provider_consented_at
+        ? dateLabel(options.memory.settings.provider_consented_at)
+        : undefined,
+      items: memoryModels(options.memory?.items ?? []),
+      commandsPending: options.memory?.commandsPending ?? false,
+      command: options.memory?.command,
+    },
     commands: {
       createConversationPending: options.pending.createConversation,
       importDatasetPending: options.pending.uploadDataset,

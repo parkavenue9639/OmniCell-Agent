@@ -178,6 +178,10 @@ def test_event_types_cover_required_persisted_and_transient_facts() -> None:
     assert {item.value for item in EventType} == {
         "run.created",
         "run.started",
+        "memory.context_loaded",
+        "memory.search_completed",
+        "memory.proposal_created",
+        "memory.forget_requested",
         "agent.turn_started",
         "agent.tool_started",
         "agent.tool_completed",
@@ -235,6 +239,39 @@ def test_event_payloads_are_bounded() -> None:
             message_id=uuid4(),
             index=0,
             delta="x" * 4_097,
+        )
+
+
+def test_memory_context_event_is_identity_only() -> None:
+    payload = {
+        "snapshot_id": str(uuid4()),
+        "scope_key": "local-default",
+        "mode": "default",
+        "outcome": "loaded",
+        "inputs": [
+            {
+                "item_id": str(uuid4()),
+                "version_id": str(uuid4()),
+                "version_number": 1,
+                "kind": "response_preference",
+                "source_kind": "explicit",
+                "selection_reason": "default",
+            }
+        ],
+        "content_bytes": 42,
+        "degraded_code": None,
+    }
+    event = validate_persisted_event(
+        _event_envelope(EventType.MEMORY_CONTEXT_LOADED, payload)
+    )
+    serialized = event.model_dump(mode="json")
+    assert serialized["payload"]["inputs"][0]["version_number"] == 1
+    assert "content" not in serialized["payload"]
+
+    payload["content"] = "不得进入公共事件的正文"
+    with pytest.raises(ValidationError):
+        validate_persisted_event(
+            _event_envelope(EventType.MEMORY_CONTEXT_LOADED, payload)
         )
 
 
@@ -303,6 +340,18 @@ def test_api_requests_forbid_extras_and_bound_lengths_and_counts() -> None:
 
     with pytest.raises(ValidationError):
         RunCreateRequest(goal="analysis", input_artifact_ids=[uuid4()] * 101)
+
+    with pytest.raises(ValidationError):
+        RunCreateRequest(goal="analysis", memory_mode="selected")
+
+    with pytest.raises(ValidationError):
+        RunCreateRequest(
+            goal="analysis",
+            memory_mode="off",
+            selected_memories=[
+                {"item_id": uuid4(), "version_id": uuid4()}
+            ],
+        )
 
     with pytest.raises(ValidationError):
         EventReplayRequest(after_sequence=-1, limit=1)

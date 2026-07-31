@@ -8,10 +8,16 @@ from dataclasses import dataclass
 from typing import Any, BinaryIO
 from uuid import UUID
 
+from omnicell_agent.memory.service import MemoryService
+from omnicell_agent.memory.errors import MemorySourceInvalidError
+from omnicell_agent.memory.types import (
+    MemoryRecord,
+    MemorySettingsState,
+)
 from omnicell_agent.persistence.models import Artifact, Conversation, Review, Run
 from omnicell_agent.runs.coordinator import RunCoordinator, capability_task_id
 from omnicell_agent.runs.event_log import RunEventLog, UnitOfWorkFactory
-from omnicell_agent.runs.status import ReviewDecision, ReviewStatus
+from omnicell_agent.runs.status import ReviewDecision, ReviewStatus, RunStatus
 
 from .contracts import (
     ArtifactListResponse,
@@ -20,6 +26,18 @@ from .contracts import (
     ConversationRead,
     ConversationStatus,
     EventReplayResponse,
+    MemoryCommandResponse,
+    MemoryCorrectRequest,
+    MemoryCreateRequest,
+    MemoryKind,
+    MemoryListResponse,
+    MemoryRead,
+    MemoryRunMode,
+    MemorySettingsRead,
+    MemorySourceRead,
+    MemoryStatus,
+    RunMemoryContextRead,
+    RunMemoryInputRead,
     PageInfo,
     ReviewDecisionResponse,
     ReviewListResponse,
@@ -158,6 +176,87 @@ def project_artifact(artifact: Artifact) -> ArtifactRead:
     )
 
 
+def project_memory_settings(settings: MemorySettingsState) -> MemorySettingsRead:
+    return MemorySettingsRead(
+        scope_key=settings.scope_key,
+        version=settings.version,
+        use_memory=settings.use_enabled,
+        generate_candidates=settings.generation_enabled,
+        enable_agent_tools=settings.tools_enabled,
+        provider_consent_granted=settings.provider_consent_granted,
+        provider_consent_version=settings.provider_consent_version,
+        provider_consented_at=settings.provider_consented_at,
+        updated_at=settings.updated_at,
+    )
+
+
+def project_memory(memory: MemoryRecord) -> MemoryRead:
+    source: MemorySourceRead | None = None
+    if memory.source_kind is not None:
+        source_ref = next(
+            (
+                value
+                for value in memory.source_refs
+                if value.get("conversation_id")
+                or value.get("run_id")
+                or value.get("message_ids")
+            ),
+            memory.source_refs[0] if memory.source_refs else {},
+        )
+        raw_message_ids = source_ref.get("message_ids", [])
+        message_ids: list[UUID] = []
+        if isinstance(raw_message_ids, list):
+            for value in raw_message_ids[:32]:
+                try:
+                    message_ids.append(UUID(str(value)))
+                except (TypeError, ValueError):
+                    continue
+        try:
+            conversation_id = (
+                UUID(str(source_ref["conversation_id"]))
+                if source_ref.get("conversation_id")
+                else None
+            )
+        except (TypeError, ValueError):
+            conversation_id = None
+        try:
+            run_id = (
+                UUID(str(source_ref["run_id"]))
+                if source_ref.get("run_id")
+                else None
+            )
+        except (TypeError, ValueError):
+            run_id = None
+        source = MemorySourceRead(
+            source_kind=memory.source_kind.value,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            message_ids=message_ids,
+        )
+    return MemoryRead(
+        memory_id=memory.item_id,
+        scope_key=memory.scope_key,
+        stable_key=memory.stable_key,
+        kind=memory.kind.value,
+        status=memory.status.value,
+        current_version=memory.current_version,
+        version_id=memory.version_id,
+        content_sha256=memory.content_sha256,
+        content=memory.content,
+        dataset_scope=(
+            {
+                str(key): str(value)
+                for key, value in memory.dataset_scope.items()
+            }
+            or None
+        ),
+        source=source,
+        expires_at=memory.expires_at,
+        created_at=memory.created_at,
+        updated_at=memory.updated_at,
+    )
+
+
 class ApiService:
     def __init__(
         self,
@@ -165,10 +264,229 @@ class ApiService:
         coordinator: RunCoordinator,
         *,
         event_log: RunEventLog | None = None,
+        memory_service: MemoryService | None = None,
     ) -> None:
         self._unit_of_work = unit_of_work
         self.coordinator = coordinator
         self.event_log = event_log or coordinator.event_log
+        self._memory_service = memory_service
+
+    def _memory(self) -> MemoryService:
+        if self._memory_service is None:
+            raise RuntimeError("Memory service 尚未配置")
+        return self._memory_service
+
+    async def get_memory_settings(self) -> MemorySettingsRead:
+        return project_memory_settings(await self._memory().get_settings())
+
+    async def update_memory_settings(
+        self,
+        *,
+        expected_version: int,
+        use_memory: bool | None,
+        generate_candidates: bool | None,
+        enable_agent_tools: bool | None,
+    ) -> MemorySettingsRead:
+        return project_memory_settings(
+            await self._memory().update_settings(
+                use_enabled=use_memory,
+                generation_enabled=generate_candidates,
+                tools_enabled=enable_agent_tools,
+                expected_version=expected_version,
+            )
+        )
+
+    async def decide_memory_provider_consent(
+        self,
+        *,
+        decision: str,
+        statement_version: str,
+        expected_version: int,
+    ) -> MemorySettingsRead:
+        return project_memory_settings(
+            await self._memory().set_provider_consent(
+                granted=decision == "grant",
+                statement_version=statement_version,
+                confirmed=True,
+                expected_version=expected_version,
+            )
+        )
+
+    async def list_memories(
+        self,
+        *,
+        kind: MemoryKind | None,
+        status: MemoryStatus | None,
+        cursor: str | None,
+        limit: int,
+    ) -> MemoryListResponse:
+        offset = _offset(cursor)
+        rows = await self._memory().list_memories(
+            kind=kind.value if kind is not None else None,
+            status=status.value if status is not None else None,
+            offset=offset,
+            limit=limit + 1,
+        )
+        selected, page = _page(rows, offset=offset, limit=limit)
+        return MemoryListResponse(
+            items=[project_memory(item) for item in selected],
+            page=page,
+        )
+
+    async def create_memory(self, request: MemoryCreateRequest) -> MemoryRead:
+        provenance = await self._verified_memory_provenance(request)
+        return project_memory(
+            await self._memory().create_memory(
+                kind=request.kind.value,
+                content=request.content,
+                stable_key=request.stable_key,
+                dataset_scope=request.dataset_scope,
+                provenance=provenance,
+                expires_at=request.expires_at,
+            )
+        )
+
+    async def _verified_memory_provenance(
+        self,
+        request: MemoryCreateRequest,
+    ) -> list[dict[str, Any]]:
+        if (
+            request.source_conversation_id is None
+            or request.source_run_id is None
+            or not request.source_message_ids
+        ):
+            return [{"source": "explicit_api"}]
+        artifact_id: UUID | None = None
+        if request.kind is MemoryKind.SCIENTIFIC_OBSERVATION:
+            try:
+                artifact_id = UUID(str((request.dataset_scope or {})["artifact_id"]))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise MemorySourceInvalidError() from exc
+        async with self._unit_of_work() as unit_of_work:
+            repositories = unit_of_work.repositories
+            assert repositories is not None
+            run = await repositories.runs.get(request.source_run_id)
+            if (
+                run is None
+                or run.conversation_id != request.source_conversation_id
+                or (
+                    request.kind is MemoryKind.SCIENTIFIC_OBSERVATION
+                    and run.status != RunStatus.COMPLETED.value
+                )
+            ):
+                raise MemorySourceInvalidError()
+            events = await repositories.events.replay(
+                run.id,
+                after_sequence=0,
+                limit=5_000,
+            )
+            public_message_ids = {
+                UUID(str(event.payload["message_id"]))
+                for event in events
+                if event.event_type == "message.completed"
+                and event.payload.get("role") in {"user", "assistant"}
+                and event.payload.get("message_id") is not None
+            }
+            if any(
+                message_id not in public_message_ids
+                for message_id in request.source_message_ids
+            ):
+                raise MemorySourceInvalidError()
+            if artifact_id is not None:
+                artifact = await repositories.artifacts.get_for_conversation(
+                    artifact_id,
+                    conversation_id=request.source_conversation_id,
+                )
+                input_ids = {
+                    str(value)
+                    for value in run.request_payload.get(
+                        "input_artifact_ids",
+                        [],
+                    )
+                }
+                if (
+                    artifact is None
+                    or artifact.kind != "dataset"
+                    or (
+                        artifact.run_id != run.id
+                        and str(artifact.id) not in input_ids
+                    )
+                ):
+                    raise MemorySourceInvalidError()
+        return [
+            {
+                "source": "explicit_api",
+                "source_verified": True,
+                "conversation_id": str(request.source_conversation_id),
+                "run_id": str(request.source_run_id),
+                "message_ids": [
+                    str(item) for item in request.source_message_ids
+                ],
+                "artifact_id": str(artifact_id) if artifact_id else None,
+            }
+        ]
+
+    async def get_memory(self, memory_id: UUID) -> MemoryRead:
+        return project_memory(await self._memory().get_memory(memory_id))
+
+    async def approve_memory(
+        self,
+        memory_id: UUID,
+        *,
+        expected_version: int,
+    ) -> MemoryRead:
+        return project_memory(
+            await self._memory().approve_memory(
+                memory_id,
+                expected_version=expected_version,
+            )
+        )
+
+    async def correct_memory(
+        self,
+        memory_id: UUID,
+        request: MemoryCorrectRequest,
+    ) -> MemoryRead:
+        provenance = (
+            [{"message_ids": [str(item) for item in request.source_message_ids]}]
+            if request.source_message_ids
+            else []
+        )
+        return project_memory(
+            await self._memory().correct_memory(
+                memory_id,
+                expected_version=request.expected_version,
+                content=request.content,
+                dataset_scope=request.dataset_scope,
+                provenance=provenance,
+            )
+        )
+
+    async def forget_memory(
+        self,
+        memory_id: UUID,
+        *,
+        expected_version: int,
+    ) -> MemoryRead:
+        return project_memory(
+            await self._memory().forget_memory(
+                memory_id,
+                expected_version=expected_version,
+            )
+        )
+
+    async def purge_memory(
+        self,
+        memory_id: UUID,
+        *,
+        expected_version: int,
+    ) -> MemoryRead:
+        return project_memory(
+            await self._memory().purge_memory(
+                memory_id,
+                expected_version=expected_version,
+            )
+        )
 
     async def create_conversation(self, *, title: str | None) -> ConversationRead:
         return project_conversation(
@@ -244,12 +562,16 @@ class ApiService:
         conversation_id: UUID,
         goal: str,
         input_artifact_ids: list[UUID],
-        request_key: str | None,
+        memory_mode: MemoryRunMode = MemoryRunMode.OFF,
+        selected_memories: list[dict[str, UUID]] | None = None,
+        request_key: str | None = None,
     ) -> RunCreateResponse:
         run = await self.coordinator.submit_run(
             conversation_id=conversation_id,
             goal=goal,
             input_artifact_ids=input_artifact_ids,
+            memory_mode=memory_mode.value,
+            selected_memories=selected_memories or [],
             request_key=request_key,
         )
         return RunCreateResponse(run=await self.get_run(run.id))
@@ -262,6 +584,55 @@ class ApiService:
         if row is None:
             raise ApiResourceNotFoundError(str(run_id))
         return project_run(row)
+
+    async def get_run_memory_context(
+        self,
+        run_id: UUID,
+    ) -> RunMemoryContextRead:
+        async with self._unit_of_work() as unit_of_work:
+            repositories = unit_of_work.repositories
+            assert repositories is not None
+            run = await repositories.runs.get(run_id)
+            if run is None:
+                raise ApiResourceNotFoundError(str(run_id))
+            raw_mode = str(run.request_payload.get("memory_mode") or "off")
+            mode = MemoryRunMode(raw_mode)
+            snapshot = await repositories.memory_snapshots.get_by_run(run_id)
+            inputs = (
+                list(
+                    await repositories.memory_inputs.list_for_snapshot(
+                        snapshot.id
+                    )
+                )
+                if snapshot is not None
+                else []
+            )
+        if snapshot is None:
+            return RunMemoryContextRead(
+                run_id=run_id,
+                mode=mode,
+                outcome="off" if mode is MemoryRunMode.OFF else "pending",
+            )
+        return RunMemoryContextRead(
+            run_id=run_id,
+            snapshot_id=snapshot.id,
+            mode=MemoryRunMode(snapshot.mode),
+            outcome=snapshot.outcome,
+            inputs=[
+                RunMemoryInputRead(
+                    item_id=item.item_id,
+                    version_id=item.version_id,
+                    version_number=item.version_number,
+                    content_sha256=item.content_sha256,
+                    kind=item.kind,
+                    source_kind=item.source_kind,
+                    selection_reason=item.selection_reason,
+                )
+                for item in inputs
+            ],
+            degraded_code=snapshot.degraded_code,
+            created_at=snapshot.created_at,
+        )
 
     async def history(
         self,

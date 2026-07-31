@@ -442,6 +442,10 @@ def test_analysis_executor_preserves_success_contract(tmp_path: Path) -> None:
         "stdout": "42\n",
         "stderr": "",
         "display_data": [],
+        "attempt_output_root": "/app/data/attempt-00-00",
+        "attempt_marker_table_path": (
+            "/app/data/attempt-00-00/markers.json"
+        ),
     }
     assert container_id is not None
     assert not asyncio.run(_container_exists(container_id))

@@ -20,25 +20,38 @@ class MarkerGene(BaseModel):
     )
     p_val: float = Field(
         validation_alias=AliasChoices("p_val", "pvals", "pval"),
+        ge=0,
+        le=1,
+        allow_inf_nan=False,
         description="原始 P 值",
     )
     p_val_adj: float = Field(
         validation_alias=AliasChoices("p_val_adj", "pvals_adj", "pval_adj"),
+        ge=0,
+        le=1,
+        allow_inf_nan=False,
         description="BH 校正后的 P 值",
     )
     log2FC: float = Field(
         validation_alias=AliasChoices("log2FC", "logfoldchanges", "avg_log2FC"),
+        allow_inf_nan=False,
         description="Fold change",
     )
     pct_1: float = Field(
         validation_alias=AliasChoices("pct.1", "pct_1"),
+        ge=0,
+        le=1,
+        allow_inf_nan=False,
         description="本细胞簇表达比例",
     )
     pct_2: float = Field(
         validation_alias=AliasChoices("pct.2", "pct_2"),
+        ge=0,
+        le=1,
+        allow_inf_nan=False,
         description="其他细胞簇表达比例",
     )
-    score: float | None = None
+    score: float | None = Field(default=None, allow_inf_nan=False)
     is_surface_protein: bool | None = None
 
 

@@ -2,8 +2,8 @@
 
 输入与输出边界：
 - `{raw_data_path}` 是本次 invocation 唯一允许首次读取的权威 dataset。不得下载数据、使用示例数据或改读其他路径。
-- `/app/data` 根目录只读；只有 `{artifact_output_root}` 及其子路径可写。所有图片、表格和报告必须写入该目录。
-- 只有当前步骤明确要求 marker table 时，才把符合现有 marker contract 的 JSON 写入 `{marker_table_path}`；其他步骤不得制造占位 marker 文件。
+- `/app/data` 根目录只读；只通过运行时注入的 `artifact_output_root` 变量及其子路径写入图片、表格和报告。每次修复尝试使用独立目录，不得硬编码 `{artifact_output_root}`。
+- 只有当前步骤明确要求 marker table 时，才把符合现有 marker contract 的 JSON 写入运行时注入的 `marker_table_path` 变量；其他步骤不得制造占位 marker 文件，也不得硬编码 `{marker_table_path}`。
 - 同一次 invocation 的前序步骤可能已经建立 `adata`。只有当前步骤需要且内存中不存在时才从 `{raw_data_path}` 加载；不得假设其他 Tool 或历史 run 的内存状态。
 
 实现规则：
@@ -11,7 +11,7 @@
 2. 若当前步骤的科学前置条件不满足，显式抛出带有缺失条件的错误；不得为避免报错而隐式补做其他分析。
 3. 不使用网络、shell、子进程、动态安装、环境变量、系统路径扫描或非权威数据源。
 4. 只使用完成当前步骤所需的库和数据。保持参数、随机种子和输出文件名明确；不要把执行成功表述为科学验证。
-5. 绘图时保证图类型、坐标、标题、颜色和图例与当前目标一致，并保存到 `{artifact_output_root}`。保存后输出一行 `saving figure to file <容器内实际路径>`，供受控 Evaluator 定位。
+5. 绘图时保证图类型、坐标、标题、颜色和图例与当前目标一致，并保存到 `artifact_output_root`。保存后输出一行 `saving figure to file <容器内实际路径>`，供受控 Evaluator 定位。
 6. 修复失败步骤时，保留已经证实有效且与当前目标一致的修复，只针对错误回执修改；不要借重试扩张步骤。
 
 只输出一对 `python` Markdown 代码块，其中包含可直接执行的代码；不要输出解释、计划或隐藏推理。

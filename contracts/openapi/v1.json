@@ -1596,6 +1596,10 @@
                   "capability.progress": "#/components/schemas/CapabilityProgressEvent",
                   "capability.retrying": "#/components/schemas/CapabilityRetryingEvent",
                   "capability.started": "#/components/schemas/CapabilityStartedEvent",
+                  "memory.context_loaded": "#/components/schemas/MemoryContextLoadedEvent",
+                  "memory.forget_requested": "#/components/schemas/MemoryForgetRequestedEvent",
+                  "memory.proposal_created": "#/components/schemas/MemoryProposalCreatedEvent",
+                  "memory.search_completed": "#/components/schemas/MemorySearchCompletedEvent",
                   "message.completed": "#/components/schemas/MessageCompletedEvent",
                   "review.requested": "#/components/schemas/ReviewRequestedEvent",
                   "review.resolved": "#/components/schemas/ReviewResolvedEvent",
@@ -1623,6 +1627,18 @@
                 },
                 {
                   "$ref": "#/components/schemas/RunStartedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/MemoryContextLoadedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/MemorySearchCompletedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/MemoryProposalCreatedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/MemoryForgetRequestedEvent"
                 },
                 {
                   "$ref": "#/components/schemas/AgentTurnStartedEvent"
@@ -1793,6 +1809,1100 @@
         },
         "title": "LivenessResponse",
         "type": "object"
+      },
+      "MemoryApproveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "maximum": 1000000000.0,
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "MemoryApproveRequest",
+        "type": "object"
+      },
+      "MemoryCommandResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "memory": {
+            "$ref": "#/components/schemas/MemoryRead"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "memory"
+        ],
+        "title": "MemoryCommandResponse",
+        "type": "object"
+      },
+      "MemoryContextInputPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "response_preference",
+              "profile_fact",
+              "project_context",
+              "scientific_observation"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "selection_reason": {
+            "enum": [
+              "default",
+              "selected",
+              "tool_search"
+            ],
+            "title": "Selection Reason",
+            "type": "string"
+          },
+          "source_kind": {
+            "enum": [
+              "explicit",
+              "proposed",
+              "corrected"
+            ],
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          },
+          "version_number": {
+            "maximum": 1000000000.0,
+            "minimum": 1.0,
+            "title": "Version Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "version_id",
+          "version_number",
+          "kind",
+          "source_kind",
+          "selection_reason"
+        ],
+        "title": "MemoryContextInputPayload",
+        "type": "object"
+      },
+      "MemoryContextLoadedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/MemoryContextLoadedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "memory.context_loaded",
+            "default": "memory.context_loaded",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "MemoryContextLoadedEvent",
+        "type": "object"
+      },
+      "MemoryContextLoadedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "content_bytes": {
+            "maximum": 262144.0,
+            "minimum": 0.0,
+            "title": "Content Bytes",
+            "type": "integer"
+          },
+          "degraded_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "memory_retrieval_unavailable",
+                  "memory_context_limit_exceeded"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Degraded Code"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryContextInputPayload"
+            },
+            "maxItems": 32,
+            "title": "Inputs",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "default",
+              "selected"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "loaded",
+              "empty",
+              "degraded"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "scope_key": {
+            "const": "local-default",
+            "default": "local-default",
+            "title": "Scope Key",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "mode",
+          "outcome",
+          "content_bytes"
+        ],
+        "title": "MemoryContextLoadedPayload",
+        "type": "object"
+      },
+      "MemoryCorrectRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "dataset_scope": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "maxProperties": 16,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Scope"
+          },
+          "expected_version": {
+            "maximum": 1000000000.0,
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "source_message_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Source Message Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_version",
+          "content"
+        ],
+        "title": "MemoryCorrectRequest",
+        "type": "object"
+      },
+      "MemoryCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "dataset_scope": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "maxProperties": 16,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Scope"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MemoryKind"
+          },
+          "source_conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Conversation Id"
+          },
+          "source_message_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Source Message Ids",
+            "type": "array"
+          },
+          "source_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Run Id"
+          },
+          "stable_key": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stable Key"
+          }
+        },
+        "required": [
+          "kind",
+          "content"
+        ],
+        "title": "MemoryCreateRequest",
+        "type": "object"
+      },
+      "MemoryForgetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "expected_version": {
+            "maximum": 1000000000.0,
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version",
+          "confirmed"
+        ],
+        "title": "MemoryForgetRequest",
+        "type": "object"
+      },
+      "MemoryForgetRequestedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/MemoryForgetRequestedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "memory.forget_requested",
+            "default": "memory.forget_requested",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "MemoryForgetRequestedEvent",
+        "type": "object"
+      },
+      "MemoryForgetRequestedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "memory": {
+            "$ref": "#/components/schemas/MemoryContextInputPayload"
+          },
+          "status": {
+            "const": "confirmation_required",
+            "title": "Status",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "memory",
+          "status"
+        ],
+        "title": "MemoryForgetRequestedPayload",
+        "type": "object"
+      },
+      "MemoryKind": {
+        "enum": [
+          "response_preference",
+          "profile_fact",
+          "project_context",
+          "scientific_observation"
+        ],
+        "title": "MemoryKind",
+        "type": "string"
+      },
+      "MemoryListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryRead"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "MemoryListResponse",
+        "type": "object"
+      },
+      "MemoryProposalCreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/MemoryProposalCreatedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "memory.proposal_created",
+            "default": "memory.proposal_created",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "MemoryProposalCreatedEvent",
+        "type": "object"
+      },
+      "MemoryProposalCreatedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "memory": {
+            "$ref": "#/components/schemas/MemoryContextInputPayload"
+          },
+          "status": {
+            "const": "proposed",
+            "title": "Status",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "memory",
+          "status"
+        ],
+        "title": "MemoryProposalCreatedPayload",
+        "type": "object"
+      },
+      "MemoryProviderConsentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "decision": {
+            "enum": [
+              "grant",
+              "revoke"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "statement_version": {
+            "const": "memory-provider-v1",
+            "title": "Statement Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "statement_version",
+          "confirmed",
+          "expected_version"
+        ],
+        "title": "MemoryProviderConsentRequest",
+        "type": "object"
+      },
+      "MemoryPurgeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "expected_version": {
+            "maximum": 1000000000.0,
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version",
+          "confirmed"
+        ],
+        "title": "MemoryPurgeRequest",
+        "type": "object"
+      },
+      "MemoryRead": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "content_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Sha256"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version"
+          },
+          "dataset_scope": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "maxProperties": 16,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Scope"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MemoryKind"
+          },
+          "memory_id": {
+            "format": "uuid",
+            "title": "Memory Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "scope_key": {
+            "const": "local-default",
+            "default": "local-default",
+            "title": "Scope Key",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemorySourceRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stable_key": {
+            "title": "Stable Key",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MemoryStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          }
+        },
+        "required": [
+          "memory_id",
+          "stable_key",
+          "kind",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MemoryRead",
+        "type": "object"
+      },
+      "MemoryRunMode": {
+        "enum": [
+          "off",
+          "default",
+          "selected"
+        ],
+        "title": "MemoryRunMode",
+        "type": "string"
+      },
+      "MemorySearchCompletedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/MemorySearchCompletedPayload"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Sequence",
+            "type": "string"
+          },
+          "type": {
+            "const": "memory.search_completed",
+            "default": "memory.search_completed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "conversation_id",
+          "run_id",
+          "occurred_at",
+          "event_id",
+          "sequence",
+          "type",
+          "payload"
+        ],
+        "title": "MemorySearchCompletedEvent",
+        "type": "object"
+      },
+      "MemorySearchCompletedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryContextInputPayload"
+            },
+            "maxItems": 32,
+            "title": "Inputs",
+            "type": "array"
+          },
+          "outcome": {
+            "enum": [
+              "loaded",
+              "empty"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "outcome"
+        ],
+        "title": "MemorySearchCompletedPayload",
+        "type": "object"
+      },
+      "MemorySelectionRef": {
+        "additionalProperties": false,
+        "properties": {
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "version_id"
+        ],
+        "title": "MemorySelectionRef",
+        "type": "object"
+      },
+      "MemorySettingsRead": {
+        "additionalProperties": false,
+        "properties": {
+          "enable_agent_tools": {
+            "title": "Enable Agent Tools",
+            "type": "boolean"
+          },
+          "generate_candidates": {
+            "title": "Generate Candidates",
+            "type": "boolean"
+          },
+          "provider_consent_granted": {
+            "title": "Provider Consent Granted",
+            "type": "boolean"
+          },
+          "provider_consent_version": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Consent Version"
+          },
+          "provider_consented_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Consented At"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "scope_key": {
+            "const": "local-default",
+            "default": "local-default",
+            "title": "Scope Key",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "use_memory": {
+            "title": "Use Memory",
+            "type": "boolean"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "use_memory",
+          "generate_candidates",
+          "enable_agent_tools",
+          "provider_consent_granted",
+          "updated_at"
+        ],
+        "title": "MemorySettingsRead",
+        "type": "object"
+      },
+      "MemorySettingsUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "enable_agent_tools": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enable Agent Tools"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "generate_candidates": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generate Candidates"
+          },
+          "use_memory": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Memory"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "MemorySettingsUpdateRequest",
+        "type": "object"
+      },
+      "MemorySourceKind": {
+        "enum": [
+          "explicit",
+          "proposed",
+          "corrected"
+        ],
+        "title": "MemorySourceKind",
+        "type": "string"
+      },
+      "MemorySourceRead": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "message_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Message Ids",
+            "type": "array"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "source_kind": {
+            "$ref": "#/components/schemas/MemorySourceKind"
+          }
+        },
+        "required": [
+          "source_kind"
+        ],
+        "title": "MemorySourceRead",
+        "type": "object"
+      },
+      "MemoryStatus": {
+        "enum": [
+          "proposed",
+          "active",
+          "revoked",
+          "purged"
+        ],
+        "title": "MemoryStatus",
+        "type": "string"
       },
       "MessageCompletedEvent": {
         "additionalProperties": false,
@@ -2693,6 +3803,10 @@
             "title": "Input Artifact Ids",
             "type": "array"
           },
+          "memory_mode": {
+            "$ref": "#/components/schemas/MemoryRunMode",
+            "default": "off"
+          },
           "request_key": {
             "anyOf": [
               {
@@ -2705,6 +3819,14 @@
               }
             ],
             "title": "Request Key"
+          },
+          "selected_memories": {
+            "items": {
+              "$ref": "#/components/schemas/MemorySelectionRef"
+            },
+            "maxItems": 32,
+            "title": "Selected Memories",
+            "type": "array"
           }
         },
         "required": [
@@ -3030,6 +4152,145 @@
           "reason"
         ],
         "title": "RunInterruptedPayload",
+        "type": "object"
+      },
+      "RunMemoryContextRead": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "degraded_code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Degraded Code"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/RunMemoryInputRead"
+            },
+            "maxItems": 32,
+            "title": "Inputs",
+            "type": "array"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/MemoryRunMode"
+          },
+          "outcome": {
+            "enum": [
+              "off",
+              "pending",
+              "loaded",
+              "empty",
+              "degraded"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "scope_key": {
+            "const": "local-default",
+            "default": "local-default",
+            "title": "Scope Key",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          }
+        },
+        "required": [
+          "run_id",
+          "mode",
+          "outcome"
+        ],
+        "title": "RunMemoryContextRead",
+        "type": "object"
+      },
+      "RunMemoryInputRead": {
+        "additionalProperties": false,
+        "properties": {
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MemoryKind"
+          },
+          "selection_reason": {
+            "enum": [
+              "default",
+              "selected",
+              "tool_search"
+            ],
+            "title": "Selection Reason",
+            "type": "string"
+          },
+          "source_kind": {
+            "$ref": "#/components/schemas/MemorySourceKind"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          },
+          "version_number": {
+            "maximum": 1000000000.0,
+            "minimum": 1.0,
+            "title": "Version Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "version_id",
+          "version_number",
+          "content_sha256",
+          "kind",
+          "source_kind",
+          "selection_reason"
+        ],
+        "title": "RunMemoryInputRead",
         "type": "object"
       },
       "RunRead": {
@@ -5228,6 +6489,645 @@
         "summary": "Get Readiness"
       }
     },
+    "/api/v1/memories": {
+      "get": {
+        "operationId": "listMemories",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MemoryKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MemoryStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "List Memories"
+      },
+      "post": {
+        "operationId": "createMemory",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求与当前生命周期状态冲突。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Create Memory"
+      }
+    },
+    "/api/v1/memories/{memory_id}": {
+      "get": {
+        "operationId": "getMemory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Get Memory"
+      }
+    },
+    "/api/v1/memories/{memory_id}/approve": {
+      "post": {
+        "operationId": "approveMemory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryCommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求与当前生命周期状态冲突。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Approve Memory"
+      }
+    },
+    "/api/v1/memories/{memory_id}/correct": {
+      "post": {
+        "operationId": "correctMemory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryCorrectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryCommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求与当前生命周期状态冲突。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Correct Memory"
+      }
+    },
+    "/api/v1/memories/{memory_id}/forget": {
+      "post": {
+        "operationId": "forgetMemory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryForgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryCommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求与当前生命周期状态冲突。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Forget Memory"
+      }
+    },
+    "/api/v1/memories/{memory_id}/purge": {
+      "post": {
+        "operationId": "purgeMemory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryPurgeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryCommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求与当前生命周期状态冲突。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Purge Memory"
+      }
+    },
+    "/api/v1/memory/provider-consent": {
+      "post": {
+        "operationId": "decideMemoryProviderConsent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryProviderConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemorySettingsRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求与当前生命周期状态冲突。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Decide Memory Provider Consent"
+      }
+    },
+    "/api/v1/memory/settings": {
+      "get": {
+        "operationId": "getMemorySettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemorySettingsRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Get Memory Settings"
+      },
+      "patch": {
+        "operationId": "updateMemorySettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemorySettingsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemorySettingsRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求语义或游标非法。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求与当前生命周期状态冲突。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Update Memory Settings"
+      }
+    },
     "/api/v1/reviews/{review_id}/decision": {
       "post": {
         "operationId": "decideReview",
@@ -5571,6 +7471,56 @@
           }
         },
         "summary": "Stream Events"
+      }
+    },
+    "/api/v1/runs/{run_id}/memory-context": {
+      "get": {
+        "operationId": "getRunMemoryContext",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunMemoryContextRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求的资源不存在。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "请求参数不符合 API 契约。"
+          }
+        },
+        "summary": "Get Run Memory Context"
       }
     },
     "/api/v1/runs/{run_id}/resume": {

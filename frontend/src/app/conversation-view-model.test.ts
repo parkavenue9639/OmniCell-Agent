@@ -342,4 +342,230 @@ describe("conversation event diagnostics", () => {
       exitCode: 0,
     });
   });
+
+  it("renders Memory Plane identity and outcome without exposing body", () => {
+    const event = {
+      schema_version: 1,
+      event_id: "99999999-9999-4999-8999-999999999999",
+      conversation_id: conversationId,
+      run_id: runId,
+      sequence: "1",
+      occurred_at: "2026-07-26T08:00:00Z",
+      type: "memory.context_loaded",
+      payload: {
+        snapshot_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        scope_key: "local-default",
+        mode: "selected",
+        outcome: "loaded",
+        content_bytes: 42,
+        inputs: [
+          {
+            item_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            version_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            version_number: 2,
+            kind: "response_preference",
+            source_kind: "explicit",
+            selection_reason: "selected",
+          },
+        ],
+      },
+    } as const satisfies PersistedEvent;
+
+    const model = modelFor([event]);
+    expect(model.timeline[0]).toMatchObject({
+      kind: "memory",
+      operation: "snapshot",
+      mode: "selected",
+      outcome: "loaded",
+      title: "检查相关记忆",
+      actionSummary: "选择与当前问题相关且仍然有效的记忆",
+      identities: [
+        {
+          itemId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          versionId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          version: 2,
+        },
+      ],
+    });
+    expect(model.events[0]).toMatchObject({
+      summary: "Memory Plane 已冻结当前 Run 的记忆上下文",
+      context: "Memory Plane · selected · loaded",
+    });
+    const metadata = Object.fromEntries(
+      model.events[0]!.metadata.map((item) => [item.label, item.value]),
+    );
+    expect(metadata).toMatchObject({
+      snapshot_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      mode: "selected",
+      outcome: "loaded",
+    });
+    expect(JSON.stringify(metadata)).not.toContain("使用中文回复");
+    expect(metadata).not.toHaveProperty("content");
+  });
+
+  it("projects search, proposal, and forget Memory events as distinct identity-only activities", () => {
+    const searchEvent = {
+      schema_version: 1,
+      event_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      conversation_id: conversationId,
+      run_id: runId,
+      sequence: "1",
+      occurred_at: "2026-07-26T08:01:00Z",
+      type: "memory.search_completed",
+      payload: {
+        tool_call_id: "search-memory-1",
+        outcome: "loaded",
+        inputs: [
+          {
+            item_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+            version_id: "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+            version_number: 3,
+            kind: "project_context",
+            source_kind: "explicit",
+            selection_reason: "tool_search",
+          },
+        ],
+      },
+    } as const satisfies PersistedEvent;
+    const proposalEvent = {
+      schema_version: 1,
+      event_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+      conversation_id: conversationId,
+      run_id: runId,
+      sequence: "2",
+      occurred_at: "2026-07-26T08:02:00Z",
+      type: "memory.proposal_created",
+      payload: {
+        tool_call_id: "propose-memory-1",
+        status: "proposed",
+        memory: {
+          item_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+          version_id: "cccccccc-cccc-4ccc-8ccc-ccccccccccc2",
+          version_number: 1,
+          kind: "scientific_observation",
+          source_kind: "proposed",
+          selection_reason: "tool_search",
+        },
+      },
+    } as const satisfies PersistedEvent;
+    const forgetEvent = {
+      schema_version: 1,
+      event_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3",
+      conversation_id: conversationId,
+      run_id: runId,
+      sequence: "3",
+      occurred_at: "2026-07-26T08:03:00Z",
+      type: "memory.forget_requested",
+      payload: {
+        tool_call_id: "forget-memory-1",
+        status: "confirmation_required",
+        memory: {
+          item_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3",
+          version_id: "cccccccc-cccc-4ccc-8ccc-ccccccccccc3",
+          version_number: 4,
+          kind: "response_preference",
+          source_kind: "corrected",
+          selection_reason: "tool_search",
+        },
+      },
+    } as const satisfies PersistedEvent;
+
+    const model = modelFor([searchEvent, proposalEvent, forgetEvent]);
+    const memoryItems = model.timeline.filter((item) => item.kind === "memory");
+
+    expect(memoryItems).toHaveLength(3);
+    expect(memoryItems[0]).toMatchObject({
+      operation: "search",
+      title: "继续查找历史背景",
+      stateLabel: "已找到",
+      identities: [
+        {
+          itemId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+          versionId: "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+          version: 3,
+        },
+      ],
+    });
+    expect(memoryItems[1]).toMatchObject({
+      operation: "proposal",
+      title: "有一条记忆待确认",
+      stateLabel: "待确认",
+      description:
+        "Agent 将你刚才的整条用户消息选为候选，没有摘要、抽取或改写",
+      actionSummary:
+        "候选已按整条来源消息保存；确认后才会用于未来相关对话",
+      process: [
+        { label: "检查内容是否适合长期保存", state: "completed" },
+        { label: "保存整条来源消息为候选", state: "completed" },
+        { label: "等待你的确认", state: "pending" },
+      ],
+      resultSummary: "候选已保存但尚未采用；请核对完整原文",
+    });
+    expect(memoryItems[2]).toMatchObject({
+      operation: "forget",
+      title: "确认忘记这条内容",
+      stateLabel: "等待确认",
+      resultSummary: "尚未忘记；请确认是否停止在未来对话中使用",
+    });
+
+    expect(model.events.map((event) => event.summary)).toEqual([
+      "Agent 按需扩展了当前 Run 的记忆上下文",
+      "Agent 创建了待确认的记忆提议",
+      "Agent 请求确认遗忘一条记忆",
+    ]);
+    expect(model.events.map((event) => event.tone)).toEqual([
+      "success",
+      "warning",
+      "warning",
+    ]);
+    for (const event of model.events) {
+      const metadata = Object.fromEntries(
+        event.metadata.map((item) => [item.label, item.value]),
+      );
+      expect(metadata).not.toHaveProperty("body");
+      expect(metadata).not.toHaveProperty("content");
+    }
+    expect(JSON.stringify(memoryItems)).not.toContain("记忆正文");
+  });
+
+  it("does not offer correction for an already revoked memory", () => {
+    const model = buildConversationViewModel({
+      loading: false,
+      conversations: [],
+      artifacts: [],
+      reviews: [],
+      memory: {
+        loading: false,
+        commandsPending: false,
+        items: [
+          {
+            schema_version: 1,
+            memory_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4",
+            scope_key: "local-default",
+            stable_key: "response.language",
+            kind: "response_preference",
+            status: "revoked",
+            current_version: 2,
+            version_id: "cccccccc-cccc-4ccc-8ccc-ccccccccccc4",
+            content_sha256: "a".repeat(64),
+            content: "回答时优先使用中文。",
+            dataset_scope: null,
+            source: null,
+            expires_at: null,
+            created_at: "2026-07-26T08:00:00Z",
+            updated_at: "2026-07-26T08:03:00Z",
+          },
+        ],
+      },
+      pending: {
+        createConversation: false,
+        uploadDataset: false,
+        submitRun: false,
+        cancelRun: false,
+      },
+    });
+
+    expect(model.memory.items[0]?.canCorrect).toBe(false);
+    expect(model.memory.items[0]?.canPurge).toBe(true);
+  });
 });

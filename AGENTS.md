@@ -26,6 +26,8 @@
 - Conversation checkpoint 可以保留跨 run 的消息历史，但每条新持久化 AIMessage 的身份必须包含当前 `run_id`；不得仅以 run-scoped turn 或消息内容生成身份，避免 LangGraph reducer 在连续 run 间误替换消息。
 - Skill 表达方法、选择和验证规则，Tool 表达类型化执行能力，Recipe 只属于 Tool 内部确定性实现；三者不得复用同一名称掩盖不同语义。
 - 能改变科学数据状态的原子 Tool 必须生成新的版本化 ArtifactRef，不得原位覆盖输入，也不得依赖跨 Tool 调用残留的容器局部状态；只有具备明确科学语义、输入前置条件、输出后置条件和代表性验证的能力才能进入公共 Tool 面。
+- 领域 Tool 的运行完成、科学目标完成和事实验证必须分层表达；Dataset 状态只能由实际输出、操作处置和科学后置校验生成，孤立 metadata 不能替代矩阵或可信 lineage；marker 阈值、有限统计量和 cluster selection coverage 不得静默降级，annotation 入口缺失完整 selection evidence、验证失败、证据不支持或输入覆盖不完整时必须失败关闭并进入人工复核。
+- 当前数据结论只能使用本次 Run 中有界、类型化且绑定来源的科学证据；自然回复与 `finish_task` 必须共用 backend 权威终答渲染，模型自由文本和有限自然语言正则不能充当完整科学门禁，执行状态、数量、Artifact 或证据等级冲突的候选不得进入公共事件或 checkpoint 历史。
 - 本轮是全新重构，不保留旧模块路径、旧类名、旧函数、旧 CLI、旧 API、历史 DAG 名称或固定入口兼容；需要延续的只有经验证的科学行为。
 - 目录移动、运行环境替换、调用方式变化与科学行为变化必须明确区分，避免在同一项工作中隐式混合。
 - 任何可能改变核心分析或注释行为、输出、反馈循环、路由或并发语义的变更，都必须明确说明意图，并用代表性基线或契约证据验证。
@@ -58,6 +60,11 @@
 - 隔离执行的存活续期只能由已成功提交的数据库 claim/heartbeat 驱动；取消、续期失效或父进程失联后，必须确认 worker 进程组及其精确 owned runtime 已回收，再释放 lease 或写入终态。跨进程 runtime claim 必须位于容器不可见的 backend 控制目录，且仅作为定位线索；回收前必须复验容器 ownership label 和不可变 identity，不能信任子进程可写的名称或 ID。
 - 数据库 lease claim 不等于 Agent 已经开始；`run.started` 与 start/resume 状态转换必须在 durable runtime 清理门禁通过后由当前 attempt fence 提交。门禁未决时应保留原运行模式和 lease，不能把可恢复的 start、review resume、取消或关闭竞态提前改写成错误终态。
 - Conversation checkpoint 可以保留跨 run 的对话历史，但新 run 必须重置完成判断、预算计数等 run-scoped state；selected-input artifact context 只能来自当前 run，并与持久化对话历史分离，禁止沿用旧 run 的数据选择或终态。
+- 跨 conversation Memory Plane 只属于本地安装级 `local-default` scope，必须与 checkpoint、conversation history、artifact、Skill 和当前 Run evidence 分离；读取、候选生成和 Agent-visible control Tool 使用独立且默认关闭的开关，向 LLM provider 发送正文前必须具有当前版本的显式 consent。
+- Memory 正文只允许在 backend 逐 turn 瞬态解析，并作为低优先级、不可信数据进入模型视图；checkpoint、Run 请求、公共事件、control Tool 参数/结果和 frontend 持久化存储只能携带精确 item/version/hash identity。Purge 返回后还必须清理 frontend 当前页面的可控正文缓存，但不能宣称召回 provider 已接收或已获授权、正在发送的请求。
+- 每个携带 Memory 正文的 Agent-level provider attempt 都必须通过短事务 pre-dispatch 门禁，复验 consent、使用开关、精确 identity、撤销/清除/suppression 状态及单调 disclosure epoch；revoke/purge 必须推进 epoch，使尚未授权的 attempt 和 Agent retry fail-closed。不得跨 provider 调用持有应用数据库事务或连接；成功 preflight 是该 attempt 已授权在途的线性化边界。
+- Memory correction 必须追加不可变版本；forget/revoke 停止后续授权与未来检索；purge 删除正文和派生明文，并同时保留无正文的内容指纹与来源 message identity 摘要 suppression；任何自动 proposal/candidate 必须在读取旧消息正文前拒绝被抑制来源，且与 purge 通过同一持久化锁线性化并持锁到新版本提交，不能在 tombstone 检查后等待 purge、再通过拼接其他消息改变整体指纹后写入。Memory control Tool 必须按 run/attempt/canonical tool call/request hash 持久化 identity-only 幂等事实；任何 control Tool 发现 attempt/lease fence 丢失时必须终止当前 Agent 执行，不得降级为可重试 ToolMessage；Agent 不得自主检索 scientific observation，科学历史只能由用户显式 selected 且不能成为当前科学证据或 artifact 权限。
+- 科研原型的 Frontend 只提供一个跨会话记忆总开关；开启后普通消息自动使用 `default`，关闭或服务不可用时自动使用 `off`，不在日常输入区暴露三门禁或 `selected` 精确版本模式。Agent 可以从用户明确表达的稳定偏好、用户事实和项目背景中主动提出候选，也可以从明确撤销或替换语义中请求 forget，不依赖“记住”或“忘记”关键词；候选每个 Run 最多一条且必须经用户确认。候选按引用的用户消息完整保存，正文及其 hash 必须保留原始 Unicode 与空白，规范化值只能用于 fingerprint 去重或抑制；只有整条消息主要表达一项单一、可独立复用的长期信息时才能提议。长期信息与当前任务、临时条件或科学内容混合，以及一次性要求、敏感推断、当前科学结论和普通闲聊均不得主动记忆。候选与遗忘确认就近显示在会话时间线；确认前必须可以查看完整来源原文并同时提供采用和拒绝，拒绝须清除候选正文并保留抑制身份，避免旧对话再次产生同一候选；处理中和失败状态必须按精确 memory item identity 显示在对应卡片。纠正、其他永久清除和技术身份保留在低频管理区。
 - 取消先作为 PostgreSQL 中的命令事实提交，再由有效 owner 传播并确认资源收尾；非 owner 不得在有效 lease 存续时抢先写入 cancelled 终态。审核决定也必须按单一权威事实原子解决，不能留下相互冲突的 resolved 事件。
 - PostgreSQL 中的类型化持久化事件是 frontend 恢复和权威状态投影的事实源；SSE 断开不得隐式取消 run，瞬态增量也不得驱动不可恢复的产品状态。
 - Run、task 与 capability 的公共失败契约只允许暴露稳定 `error_code`、受控摘要和必要关联身份；原始异常、provider 返回、宿主路径、凭据和 capability 子进程任意输出只能进入服务端诊断日志。由可信 Local Docker runtime 独立采集的公开执行转录可以通过类型化事件展示容器逻辑 command、exit code 和有界 stdout/stderr，但必须显式标记 `redacted`、`truncated` 与编码状态，且不得包含宿主绝对路径、环境变量值、凭据或 backend 控制命令。
@@ -65,6 +72,7 @@
 - Run 终态事件必须是该 run 的最后一个持久化事件；所有公共事件 payload 都必须先通过版本化契约校验，事件 sequence 跨端传输时必须保持无精度损失。
 - Artifact 上传、解析、预览和下载必须经过 conversation ownership 与 workspace 边界校验；下载应从已经校验并固定的文件句柄流式返回，不能在校验后重新按路径打开；Agent-facing 参数只传稳定 `artifact_id` 句柄，由 backend 执行适配层恢复并复验权威 ArtifactRef；模型上下文、Tool 结果、最终回复和公共 API 只暴露稳定引用、有界 metadata 与领域摘要，不得暴露 workspace URI 或宿主路径。
 - Capability 输出先进入 invocation-scoped 非权威空间，容器仅能写当前 invocation 并受文件数、单文件和总字节边界约束；只有当前 attempt fence 内的生命周期事务可以登记为权威 artifact，禁止全 workspace 差集或跨 attempt 残片发布。
+- 探索性分析的每次修复尝试必须使用独立输出目录，只有成功尝试可以进入结果 Artifact 集合；调用时必须声明 backend 支持的类型化验收目标，局部事实不能替代目标验收；结果清单必须分级并对账同语义 cluster 产物的完整 ID、逐簇 count 和 proportion 映射，结构可读不等于科学结论已验证，未知文件只能作为非权威草稿。
 - Conversation 对应顶层 checkpoint thread；compiled root graph 使用 LangGraph 根 namespace，嵌套复合能力使用框架管理的 namespace，不得把顶层自定义 `checkpoint_ns` 当作能力隔离保证。同一 thread 可承载多个顺序 run，恢复时必须对账 checkpoint state 的 run identity 与 review anchor 后再选择 start、resume 或 continue，不能把旧 run checkpoint 当作当前 run 已启动的证明。
 - Checkpoint retention 只在 run 终态宽限后执行，必须保护最新恢复点及已声明的审核/工作流锚点；孤儿清理只能处理本次 prune 的候选版本，不得对活跃 namespace 做全局扫除。
 - 数据库日志不得输出原始 DSN、用户信息、密码或可能携带凭据的 query 参数。
@@ -86,6 +94,7 @@
 - 验证强度应与风险和阶段门槛匹配，优先验证受影响边界、核心能力、失败路径和恢复路径。
 - 每项阶段证据都应可复查，至少记录验证对象、所用方式、结果和仍未覆盖的限制。
 - 最终产品闭环应至少保留一条不 mock HTTP 的浏览器测试，连接真实 React、FastAPI、PostgreSQL、checkpointer 与 SSE；模型和科学 capability 可以使用确定性替身，避免把真实 LLM 波动作为回归门槛。
+- Live E2E 默认必须清理临时 schema、workspace、服务和执行容器；只有显式 inspect 模式可以保留独立测试数据供人工查看，并且必须打印 frontend 地址、schema、workspace 与本地回执身份，不能写入或复用日常开发 schema。
 - Playwright 默认使用其隔离管理的 Chromium；只有显式验证系统浏览器 channel 时才允许切换到系统 Chrome，避免测试进程污染用户浏览器状态或放大 macOS 沙箱启动故障。
 - 核心科学行为验证必须区分确定性契约、受控模型替身与真实模型观察；前两者承担可复现门槛，真实模型结果不得成为唯一阻断依据，旧路径或旧符号不属于验证目标。
 - 验证失败时，不得降低标准、跳过前置条件或把部分成功表述为完成；应保留证据并明确阻塞。

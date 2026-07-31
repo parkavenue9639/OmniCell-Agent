@@ -12,6 +12,7 @@ from omnicell_agent.agent import AgentLoopFactory
 from omnicell_agent.capabilities.bootstrap import build_domain_capability_layer
 from omnicell_agent.core.environment import load_project_environment
 from omnicell_agent.llm.bootstrap import build_factory_from_env
+from omnicell_agent.memory import MemoryService, PostgresMemoryRuntime
 from omnicell_agent.persistence.bootstrap import PersistenceRuntime
 from omnicell_agent.persistence.config import PostgresSettings
 from omnicell_agent.runs.coordinator import RunCoordinator
@@ -31,6 +32,11 @@ async def api_lifespan(app: FastAPI):
     try:
         capabilities = build_domain_capability_layer()
         llm_factory = build_factory_from_env()
+        memory_service = MemoryService(persistence.unit_of_work)
+        memory_runtime = PostgresMemoryRuntime(
+            persistence.unit_of_work,
+            service=memory_service,
+        )
         agent_factory = AgentLoopFactory(
             capabilities,
             llm_factory=llm_factory,
@@ -43,11 +49,13 @@ async def api_lifespan(app: FastAPI):
             checkpointer=persistence.checkpoints.get_saver(),
             agent_factory=agent_factory,
             workspace_root=workspace_root,
+            memory_runtime=memory_runtime,
             title_generator=LLMConversationTitleGenerator(llm_factory),
         )
         app.state.api_service = ApiService(
             persistence.unit_of_work,
             coordinator,
+            memory_service=memory_service,
         )
         app.state.readiness_service = build_readiness_service(persistence)
         await coordinator.recover()

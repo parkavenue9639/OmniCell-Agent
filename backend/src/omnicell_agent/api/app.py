@@ -11,6 +11,20 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from omnicell_agent.memory.errors import (
+    MemoryConflictError,
+    MemoryContentRejectedError,
+    MemoryContextLimitError,
+    MemoryDisabledError,
+    MemoryError,
+    MemoryNotFoundError,
+    MemoryProviderConsentRequiredError,
+    MemorySelectionInvalidError,
+    MemorySnapshotConflictError,
+    MemorySourceInvalidError,
+    MemoryStateError,
+    MemorySuppressedError,
+)
 from omnicell_agent.runs.coordinator import (
     ArtifactNotFoundError,
     ArtifactUploadTooLargeError,
@@ -113,6 +127,7 @@ def create_app(
     for error_type in (ReviewConflictError, RunConflictError):
         app.add_exception_handler(error_type, _conflict_handler)
     app.add_exception_handler(ArtifactUploadTooLargeError, _upload_too_large_handler)
+    app.add_exception_handler(MemoryError, _memory_error_handler)
 
     @app.exception_handler(ValueError)
     async def invalid_value(request: Request, exc: ValueError):
@@ -135,6 +150,46 @@ async def _conflict_handler(request: Request, exc: Exception) -> JSONResponse:
 async def _upload_too_large_handler(request: Request, exc: Exception) -> JSONResponse:
     del request
     return _error_response(413, code="artifact_too_large", message=str(exc))
+
+
+async def _memory_error_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    del request
+    assert isinstance(exc, MemoryError)
+    if isinstance(exc, MemoryNotFoundError):
+        status_code = 404
+    elif isinstance(
+        exc,
+        (
+            MemoryConflictError,
+            MemoryDisabledError,
+            MemoryProviderConsentRequiredError,
+            MemorySnapshotConflictError,
+            MemoryStateError,
+        ),
+    ):
+        status_code = 409
+    elif isinstance(
+        exc,
+        (
+            MemoryContentRejectedError,
+            MemoryContextLimitError,
+            MemorySelectionInvalidError,
+            MemorySourceInvalidError,
+            MemorySuppressedError,
+        ),
+    ):
+        status_code = 400
+    else:
+        status_code = 400
+    return _error_response(
+        status_code,
+        code=exc.error_code,
+        message=exc.summary,
+        retryable=exc.retryable,
+    )
 
 
 __all__ = ["create_app"]

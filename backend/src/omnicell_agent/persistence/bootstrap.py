@@ -16,7 +16,7 @@ from omnicell_agent.persistence.unit_of_work import UnitOfWork
 
 
 logger = logging.getLogger(__name__)
-APP_SCHEMA_HEAD = "20260722_0002"
+APP_SCHEMA_HEAD = "20260726_0003"
 
 
 class PersistenceRuntime:

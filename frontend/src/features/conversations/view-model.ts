@@ -145,6 +145,57 @@ export interface TimelineRuntimeItem {
   occurredAtLabel: string;
 }
 
+export type MemoryRunMode = "off" | "default" | "selected";
+
+export type MemoryKind =
+  | "response_preference"
+  | "profile_fact"
+  | "project_context"
+  | "scientific_observation";
+
+export type MemoryStatus = "proposed" | "active" | "revoked" | "purged";
+
+export interface MemorySelection {
+  mode: MemoryRunMode;
+  refs: readonly {
+    itemId: string;
+    versionId: string;
+  }[];
+}
+
+export interface TimelineMemoryItem {
+  id: string;
+  kind: "memory";
+  operation: "snapshot" | "search" | "proposal" | "forget";
+  mode?: Exclude<MemoryRunMode, "off">;
+  outcome:
+    | "loaded"
+    | "empty"
+    | "degraded"
+    | "proposed"
+    | "confirmation_required";
+  title: string;
+  description: string;
+  actionSummary: string;
+  stateLabel: string;
+  process: readonly {
+    label: string;
+    detail?: string;
+    state: ActivityProcessState;
+  }[];
+  resultSummary: string;
+  identities: readonly {
+    itemId: string;
+    versionId: string;
+    version: number;
+    kind: MemoryKind;
+    source: string;
+    reason: string;
+  }[];
+  degradedCode?: string;
+  occurredAtLabel: string;
+}
+
 export type ArtifactPreviewMode = "image" | "json" | "text" | "table" | "none";
 
 export interface TimelineArtifactItem {
@@ -186,6 +237,7 @@ export type TimelineItem =
   | TimelineToolItem
   | TimelineSkillItem
   | TimelineRuntimeItem
+  | TimelineMemoryItem
   | TimelineArtifactItem
   | TimelineReviewItem
   | TimelineNoticeItem;
@@ -251,6 +303,62 @@ export interface EventMetadataItem {
   value: string;
 }
 
+export interface MemoryItemViewModel {
+  id: string;
+  stableKey: string;
+  kind: MemoryKind;
+  kindLabel: string;
+  status: MemoryStatus;
+  statusLabel: string;
+  version?: number;
+  versionId?: string;
+  content?: string;
+  contentSha256?: string;
+  sourceLabel: string;
+  sourceDetail?: string;
+  datasetScopeLabel?: string;
+  createdAtLabel: string;
+  updatedAtLabel: string;
+  canApprove: boolean;
+  canCorrect: boolean;
+  canForget: boolean;
+  canPurge: boolean;
+}
+
+export type MemoryCommandKind =
+  | "setting"
+  | "enable"
+  | "disable"
+  | "revoke_consent"
+  | "create"
+  | "approve"
+  | "correct"
+  | "forget"
+  | "purge";
+
+export interface MemoryCommandViewModel {
+  kind: MemoryCommandKind;
+  memoryId?: string;
+  pending: boolean;
+  errorMessage?: string;
+}
+
+export interface MemorySettingsViewModel {
+  available: boolean;
+  loading: boolean;
+  errorMessage?: string;
+  commandErrorMessage?: string;
+  useMemory: boolean;
+  generateCandidates: boolean;
+  enableAgentTools: boolean;
+  providerConsentGranted: boolean;
+  providerConsentVersion?: string;
+  providerConsentedAtLabel?: string;
+  items: readonly MemoryItemViewModel[];
+  commandsPending: boolean;
+  command?: MemoryCommandViewModel;
+}
+
 export interface ConversationWorkspaceViewModel {
   viewState: WorkspaceViewState;
   errorMessage?: string;
@@ -270,6 +378,7 @@ export interface ConversationWorkspaceViewModel {
   reviews: readonly ReviewViewModel[];
   artifacts: readonly ArtifactViewModel[];
   events: readonly EventViewModel[];
+  memory: MemorySettingsViewModel;
   commands: {
     createConversationPending: boolean;
     importDatasetPending: boolean;
@@ -290,7 +399,10 @@ export interface ConversationWorkspaceActions {
   onSelectDataset?: (artifactId: string) => void;
   onImportDataset?: () => void;
   onRetry?: () => void;
-  onSubmit?: (instruction: string) => boolean | Promise<boolean>;
+  onSubmit?: (
+    instruction: string,
+    memory: MemorySelection,
+  ) => boolean | Promise<boolean>;
   onCancelRun?: (runId: string) => void;
   onReviewDecision?: (
     reviewId: string,
@@ -299,4 +411,34 @@ export interface ConversationWorkspaceActions {
   ) => void;
   onDownloadArtifact?: (artifactId: string, fileName: string) => void;
   onLoadArtifactContent?: (artifactId: string) => Promise<Blob>;
+  onUpdateMemorySetting?: (
+    setting: "generateCandidates" | "enableAgentTools",
+    enabled: boolean,
+  ) => boolean | Promise<boolean>;
+  onGrantMemoryConsentAndEnable?: () => boolean | Promise<boolean>;
+  onDisableMemory?: () => boolean | Promise<boolean>;
+  onRevokeMemoryConsent?: () => boolean | Promise<boolean>;
+  onCreateMemory?: (input: {
+    kind: MemoryKind;
+    stableKey?: string;
+    content: string;
+    datasetScope?: Readonly<Record<string, string>>;
+  }) => boolean | Promise<boolean>;
+  onApproveMemory?: (
+    memoryId: string,
+    expectedVersion: number,
+  ) => boolean | Promise<boolean>;
+  onCorrectMemory?: (
+    memoryId: string,
+    expectedVersion: number,
+    content: string,
+  ) => boolean | Promise<boolean>;
+  onForgetMemory?: (
+    memoryId: string,
+    expectedVersion: number,
+  ) => boolean | Promise<boolean>;
+  onPurgeMemory?: (
+    memoryId: string,
+    expectedVersion: number,
+  ) => boolean | Promise<boolean>;
 }

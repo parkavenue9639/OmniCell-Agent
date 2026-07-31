@@ -3,17 +3,27 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from langchain_core.messages import (
     AIMessage,
     AnyMessage,
+    HumanMessage,
     SystemMessage,
     ToolMessage,
 )
 
 from omnicell_agent.capabilities.catalog import SkillCatalog
+
+from .memory_policy import render_memory_data_policy
+from .scientific_evidence import (
+    deterministic_scientific_fallback,
+    render_scientific_evidence_context,
+    scientific_evidence_from_state,
+    validate_scientific_final_response,
+)
 
 
 @dataclass
@@ -25,6 +35,11 @@ class AgentTurnContext:
     model: Any
     result: AIMessage | None = None
     output_updates: dict[str, Any] = field(default_factory=dict)
+    pre_dispatch_checks: list[Callable[[], Awaitable[None]]] = field(
+        default_factory=list
+    )
+    transient_memory_bodies: tuple[str, ...] = ()
+    completion_replacement: str | None = None
 
 
 class AgentHook(Protocol):
@@ -39,6 +54,236 @@ class BaseAgentHook:
 
     async def post_invoke(self, context: AgentTurnContext) -> None:
         del context
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedMemory:
+    """One transient memory body resolved from a persisted identity."""
+
+    item_id: str
+    version_id: str
+    version_number: int
+    content_sha256: str
+    kind: str
+    source_kind: str
+    selection_reason: str
+    dataset_scope: dict[str, str]
+    provenance: tuple[dict[str, Any], ...]
+    content: str
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryTurnResolution:
+    """Transient bodies plus checkpoint-safe identities for one model turn."""
+
+    memories: tuple[ResolvedMemory, ...] = ()
+    valid_extra_resources: tuple[dict[str, Any], ...] = ()
+    source_message_ids: tuple[str, ...] = ()
+    pre_dispatch: Callable[[], Awaitable[None]] | None = None
+
+
+class MemoryOutputLeakError(RuntimeError):
+    """A model candidate copied transient memory into persisted output."""
+
+
+class DispatchAuthorizationInvalidatedError(RuntimeError):
+    """A transient provider-dispatch authorization is no longer valid."""
+
+
+def memory_context_payload(
+    memories: tuple[ResolvedMemory, ...] | list[ResolvedMemory],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "item_id": item.item_id,
+            "version_id": item.version_id,
+            "version_number": item.version_number,
+            "content_sha256": item.content_sha256,
+            "kind": item.kind,
+            "source_kind": item.source_kind,
+            "selection_reason": item.selection_reason,
+            "dataset_scope": item.dataset_scope,
+            "provenance": list(item.provenance),
+            "content": item.content,
+        }
+        for item in memories
+    ]
+
+
+def encode_memory_context(
+    memories: tuple[ResolvedMemory, ...] | list[ResolvedMemory],
+) -> str:
+    return json.dumps(
+        memory_context_payload(memories),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def _string_leaves(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        result: list[str] = []
+        for nested in value.values():
+            result.extend(_string_leaves(nested))
+        return result
+    if isinstance(value, (list, tuple)):
+        result = []
+        for nested in value:
+            result.extend(_string_leaves(nested))
+        return result
+    return []
+
+
+class MemoryContextResolver(Protocol):
+    async def resolve(
+        self,
+        extra_resources: list[dict[str, Any]],
+    ) -> MemoryTurnResolution: ...
+
+
+class MemoryContextHook(BaseAgentHook):
+    """Resolve exact memory identities into an untrusted transient model view."""
+
+    def __init__(
+        self,
+        resolver: MemoryContextResolver,
+        *,
+        max_context_bytes: int = 64 * 1024,
+    ) -> None:
+        if max_context_bytes <= 0 or max_context_bytes > 256 * 1024:
+            raise ValueError("memory context 上限必须在 1..262144 bytes")
+        self._resolver = resolver
+        self._max_context_bytes = max_context_bytes
+
+    async def pre_invoke(self, context: AgentTurnContext) -> None:
+        raw_resources = context.state.get("loaded_memory_resources", [])
+        resources = [
+            dict(item)
+            for item in raw_resources
+            if isinstance(item, dict)
+        ][:32]
+        resolution = await self._resolver.resolve(resources)
+        if resolution.pre_dispatch is not None:
+            context.pre_dispatch_checks.append(resolution.pre_dispatch)
+        valid_resources = [dict(item) for item in resolution.valid_extra_resources]
+        if valid_resources != resources:
+            context.output_updates["loaded_memory_resources"] = valid_resources
+
+        if resolution.source_message_ids:
+            source_context = json.dumps(
+                list(resolution.source_message_ids),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            self._insert_system_message(
+                context.messages,
+                SystemMessage(
+                    name="memory_source_identities",
+                    content=(
+                        "若 propose_memory 可见，它只能引用以下当前 run 的 "
+                        "message identity；不能在 Tool 参数中复制或改写消息正文：\n"
+                        f"{source_context}"
+                    ),
+                ),
+            )
+
+        if not resolution.memories:
+            return
+        encoded = encode_memory_context(resolution.memories)
+        if len(encoded.encode("utf-8")) > self._max_context_bytes:
+            raise ValueError("resolved memory context 超过逐 turn 上限")
+        context.transient_memory_bodies = tuple(
+            item.content for item in resolution.memories
+        )
+        self._insert_system_message(
+            context.messages,
+            SystemMessage(
+                name="cross_conversation_memory_policy",
+                content=render_memory_data_policy(),
+            ),
+        )
+        self._insert_data_message(
+            context.messages,
+            HumanMessage(
+                name="cross_conversation_memory_data",
+                content=encoded,
+            ),
+        )
+
+    async def post_invoke(self, context: AgentTurnContext) -> None:
+        if context.result is None or not context.transient_memory_bodies:
+            return
+        result = context.result.model_dump(mode="json")
+        control_leaves = _string_leaves(
+            {
+                "tool_calls": result.get("tool_calls"),
+                "invalid_tool_calls": result.get("invalid_tool_calls"),
+                "additional_kwargs": result.get("additional_kwargs"),
+                "response_metadata": result.get("response_metadata"),
+                "id": result.get("id"),
+                "name": result.get("name"),
+            }
+        )
+        content_leaves = _string_leaves(result.get("content"))
+        control_leak = any(
+            body and body in value
+            for body in context.transient_memory_bodies
+            for value in control_leaves
+        )
+        # User-visible answers may legitimately repeat short exact facts such
+        # as a preferred name. Reject only wholesale long-body copying there,
+        # while every control-plane field remains body-free regardless of size.
+        content_leak = any(
+            len(body) >= 64 and body in value
+            for body in context.transient_memory_bodies
+            for value in content_leaves
+        )
+        if not control_leak and not content_leak:
+            return
+        context.messages.append(
+            SystemMessage(
+                name="memory_output_rejected",
+                content=(
+                    "上一个候选输出逐字复制了瞬态跨会话记忆正文，已在持久化前拒绝。"
+                    "请只应用其偏好或背景含义，使用当前请求所需的最小表达重新回答；"
+                    "不要在文本、Tool 参数或 metadata 中复制记忆正文。"
+                ),
+            )
+        )
+        raise MemoryOutputLeakError(
+            "model candidate copied transient memory into persisted output"
+        )
+
+    @staticmethod
+    def _insert_system_message(
+        messages: list[AnyMessage],
+        message: SystemMessage,
+    ) -> None:
+        insertion = 0
+        while insertion < len(messages) and isinstance(
+            messages[insertion],
+            SystemMessage,
+        ):
+            insertion += 1
+        messages.insert(insertion, message)
+
+    @staticmethod
+    def _insert_data_message(
+        messages: list[AnyMessage],
+        message: HumanMessage,
+    ) -> None:
+        # Keep historical memory before all real conversation turns so the
+        # latest user request remains the highest-priority user message.
+        insertion = 0
+        while insertion < len(messages) and isinstance(
+            messages[insertion],
+            SystemMessage,
+        ):
+            insertion += 1
+        messages.insert(insertion, message)
 
 
 class SkillMethodContextHook(BaseAgentHook):
@@ -180,11 +425,66 @@ class PlanBackpressureHook(BaseAgentHook):
         )
 
 
+class ScientificEvidenceCompletionHook(BaseAgentHook):
+    """Expose current-Run facts transiently and reject deterministic conflicts."""
+
+    async def pre_invoke(self, context: AgentTurnContext) -> None:
+        evidence = scientific_evidence_from_state(context.state)
+        if not evidence:
+            return
+        insertion = 0
+        while insertion < len(context.messages) and isinstance(
+            context.messages[insertion],
+            SystemMessage,
+        ):
+            insertion += 1
+        context.messages.insert(
+            insertion,
+            SystemMessage(
+                content=render_scientific_evidence_context(evidence),
+                name="current_run_scientific_evidence",
+            ),
+        )
+
+    async def post_invoke(self, context: AgentTurnContext) -> None:
+        message = context.result
+        if message is None or message.tool_calls:
+            return
+        if isinstance(message.content, str):
+            text = message.content.strip()
+        else:
+            text = "\n".join(
+                str(block.get("text") or "").strip()
+                for block in message.content
+                if isinstance(block, dict) and block.get("type") == "text"
+            ).strip()
+        if not text:
+            return
+        evidence = scientific_evidence_from_state(context.state)
+        if not evidence:
+            return
+        # Model prose remains useful as a draft, but free-form language and
+        # bounded regexes cannot form a complete scientific claim boundary.
+        # Public evidence-bearing responses are therefore rendered only from
+        # the backend-validated current-Run ledger.
+        failures = validate_scientific_final_response(text, evidence)
+        context.completion_replacement = deterministic_scientific_fallback(
+            evidence,
+            failures,
+        )
+
+
 __all__ = [
     "AgentHook",
     "AgentTurnContext",
     "BaseAgentHook",
     "MalformedToolHistoryHook",
+    "MemoryContextHook",
+    "MemoryContextResolver",
+    "DispatchAuthorizationInvalidatedError",
+    "MemoryTurnResolution",
     "PlanBackpressureHook",
+    "ResolvedMemory",
+    "ScientificEvidenceCompletionHook",
     "SkillMethodContextHook",
 ]

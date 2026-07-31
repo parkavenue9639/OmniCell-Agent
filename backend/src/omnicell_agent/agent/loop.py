@@ -10,7 +10,7 @@ import time
 from collections.abc import Callable, Mapping
 from enum import StrEnum
 from typing import Annotated, Any, Literal, TypedDict, cast
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from langchain_core.messages import (
     AIMessage,
@@ -29,9 +29,14 @@ from omnicell_agent.persistence.checkpointer import checkpoint_thread_id
 from omnicell_agent.runs.status import ReviewDecision, TaskStatus
 
 from .cancellation import CancellationToken
-from .hooks import AgentHook, AgentTurnContext
+from .hooks import (
+    AgentHook,
+    AgentTurnContext,
+    DispatchAuthorizationInvalidatedError,
+)
 from .observer import AgentObserver
 from .resource_boundary import contains_internal_resource_locator
+from .scientific_evidence import scientific_evidence_from_state
 from .tooling import (
     AgentToolFatalError,
     AgentToolInvocation,
@@ -45,6 +50,10 @@ logger = logging.getLogger(__name__)
 
 _PUBLIC_TOOL_FAILURE = "内部执行失败，请检查输入或稍后重试。"
 _MAX_PERSISTED_TOOL_CALLS_PER_TURN = 8
+_AUTHORITATIVE_SCIENTIFIC_FINISH_PLACEHOLDER = (
+    "由 backend 根据当前 Run 已验证科研证据生成终答。"
+)
+_MESSAGE_NAMESPACE = UUID("56b099a2-4bb5-4fe4-b6b5-acdb514a33e1")
 
 
 class AgentOutcomeStatus(StrEnum):
@@ -115,6 +124,7 @@ class AgentLoopState(TypedDict, total=False):
     plan_step_evidence: dict[str, list[str]]
     active_plan_task_id: str | None
     loaded_skill_resources: list[dict[str, Any]]
+    loaded_memory_resources: list[dict[str, Any]]
     tool_failure_counts: dict[str, int]
     tool_evidence: dict[str, dict[str, Any]]
     tool_call_batch_rejected: bool
@@ -352,7 +362,12 @@ class AgentExecution:
         if len(normalized) > 20_000:
             raise ValueError("Agent instruction 超过 20,000 字符")
         initial: AgentLoopState = {
-            "messages": [HumanMessage(content=normalized)],
+            "messages": [
+                HumanMessage(
+                    content=normalized,
+                    id=str(uuid5(_MESSAGE_NAMESPACE, f"{self.run_id}:user")),
+                )
+            ],
             "run_id": str(self.run_id),
             "task_status": TaskStatus.PENDING.value,
             "turn_count": 0,
@@ -370,6 +385,7 @@ class AgentExecution:
             "plan_step_evidence": {},
             "active_plan_task_id": "",
             "loaded_skill_resources": [],
+            "loaded_memory_resources": [],
             "tool_failure_counts": {},
             "tool_evidence": {},
             "tool_call_batch_rejected": False,
@@ -583,6 +599,8 @@ class AgentExecution:
         for attempt in range(self._settings.max_model_retries + 1):
             self._cancellation.raise_if_cancelled()
             try:
+                for check in turn_context.pre_dispatch_checks:
+                    await check()
                 candidate = await self._invoke_model(
                     turn_context.model,
                     messages,
@@ -597,9 +615,19 @@ class AgentExecution:
                     raise TypeError("Agent hook 必须保留 AIMessage 结果")
                 model_calls += 1
                 break
+            except DispatchAuthorizationInvalidatedError:
+                # This exact body set is no longer authorized. In particular,
+                # never route a revoke/purge/consent race into model retry.
+                raise RuntimeError(
+                    "memory disclosure authorization changed before dispatch"
+                ) from None
             except Exception:
                 model_calls += 1
                 if attempt >= self._settings.max_model_retries:
+                    if turn_context.transient_memory_bodies:
+                        raise RuntimeError(
+                            "model invocation failed with transient memory context"
+                        ) from None
                     raise
                 if model_calls >= self._settings.max_model_calls:
                     exhausted = await self._budget_exhausted(
@@ -618,6 +646,28 @@ class AgentExecution:
             run_id=self.run_id,
             turn=next_turn,
         )
+        scientific_finish_redacted = False
+        if scientific_evidence_from_state(state):
+            sanitized_tool_calls: list[dict[str, Any]] = []
+            for tool_call in canonical_tool_calls:
+                if tool_call.get("name") != "finish_task":
+                    sanitized_tool_calls.append(tool_call)
+                    continue
+                arguments = dict(tool_call.get("args") or {})
+                if "final_response" in arguments:
+                    arguments["final_response"] = (
+                        _AUTHORITATIVE_SCIENTIFIC_FINISH_PLACEHOLDER
+                    )
+                    scientific_finish_redacted = True
+                sanitized_tool_calls.append(
+                    {
+                        **tool_call,
+                        "args": arguments,
+                    }
+                )
+            canonical_tool_calls = sanitized_tool_calls
+        if scientific_finish_redacted and _content_text(message):
+            message = message.model_copy(update={"content": ""})
         message_key = hashlib.sha256(
             json.dumps(
                 {
@@ -678,6 +728,31 @@ class AgentExecution:
             return update
 
         final_response = _final_response_text(message)
+        completion_replacement = turn_context.completion_replacement
+        if completion_replacement:
+            message_key = hashlib.sha256(
+                json.dumps(
+                    {
+                        "run_id": str(self.run_id),
+                        "turn": next_turn,
+                        "authoritative_scientific_response": (
+                            completion_replacement
+                        ),
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode("utf-8")
+            ).hexdigest()[:32]
+            message = AIMessage(
+                id=message_key,
+                content=completion_replacement,
+                response_metadata={
+                    "omnicell_run_id": str(self.run_id),
+                    "omnicell_authoritative_scientific_response": True,
+                },
+            )
+            update["messages"] = [message]
+            final_response = completion_replacement
         invalid_resource_locator = bool(
             final_response
             and contains_internal_resource_locator(final_response)

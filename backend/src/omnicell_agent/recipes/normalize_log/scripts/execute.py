@@ -1,5 +1,7 @@
 import scanpy as sc
 import numpy as np
+import hashlib
+import json
 
 try:
     import scipy.sparse as sp
@@ -27,8 +29,6 @@ def _sample_matrix_values(adata, max_values=200000):
 
 
 def _looks_log_normalized(adata) -> bool:
-    if 'log1p' in adata.uns_keys():
-        return True
     vals = _sample_matrix_values(adata)
     if vals.size == 0:
         return False
@@ -39,11 +39,41 @@ def _looks_log_normalized(adata) -> bool:
     return max_val <= 30.0 and non_integer_fraction >= 0.1
 
 
+detector = globals().get("_atomic_detect_expression_space")
+if callable(detector):
+    input_expression_space, _ = detector(adata)
+else:
+    input_expression_space = (
+        "log1p_detected" if _looks_log_normalized(adata) else "unknown"
+    )
+
+operation_signature = globals().get("_atomic_parameter_signature")
+if not operation_signature:
+    operation_signature = hashlib.sha256(
+        json.dumps(
+            tool_parameters,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
 # 标准化与对数转换
-if not _looks_log_normalized(adata):
+scientific_state = dict(
+    adata.uns.get("omnicell_scientific_state") or {}
+)
+if input_expression_space == "unknown":
     sc.pp.normalize_total(adata, target_sum=float(tool_parameters["target_sum"]))
     sc.pp.log1p(adata)
+    scientific_state["expression_space"] = "normalized_log1p"
+    scientific_state["normalization_signature"] = operation_signature
+    _atomic_operation_disposition = "executed"
     print("Normalization and log1p completed.")
 else:
-    adata.uns.setdefault('omnicell_input_space', 'log_normalized_detected')
-    print("Data already seems to be log-transformed, skipping normalization steps to prevent over-flattening.")
+    scientific_state["expression_space"] = input_expression_space
+    _atomic_operation_disposition = "reused"
+    print(
+        "Data already has a log-expression space; "
+        "reusing it without repeating normalization."
+    )
+adata.uns["omnicell_scientific_state"] = scientific_state
